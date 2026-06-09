@@ -1,10 +1,11 @@
 package com.example.wikipedia_app.network
 
-import com.example.wikipedia_app.model.ArticleResponse
-import com.example.wikipedia_app.model.WikipediaResponse
 import com.example.wikipedia_app.model.ArticleDescriptionResponse
+import com.example.wikipedia_app.model.ArticleResponse
+import com.example.wikipedia_app.model.FeaturedArticle
 import com.example.wikipedia_app.model.FeaturedArticleResponse
 import com.example.wikipedia_app.model.TrendingArticleResponse
+import com.example.wikipedia_app.model.WikipediaResponse
 //import com.example.wikipedia_app.model.TrendingResponse
 import retrofit2.http.GET
 import retrofit2.http.Query
@@ -49,11 +50,21 @@ interface WikipediaApiService {
         @Path("day") day: String
     ): Call<FeaturedArticleResponse>
 
-    @GET("api/rest_v1/metrics/pageviews/top/en.wikipedia/all-access/{year}/{month}/{day}")
+    // Pageviews metrics live on wikimedia.org, not wikipedia.org — absolute URL overrides base URL
+    @GET("https://wikimedia.org/api/rest_v1/metrics/pageviews/top/en.wikipedia/all-access/{year}/{month}/{day}")
     fun getTrendingArticles(
         @Path("year") year: String,
         @Path("month") month: String,
         @Path("day") day: String
     ): Call<TrendingArticleResponse>
+
+    // Single call that returns the full article HTML + section list + images
+    @GET("w/api.php?action=parse&format=json&formatversion=2&prop=text|sections|displaytitle|images&disableeditsection=1")
+    suspend fun getFullArticle(@Query("page") title: String): ArticleResponse
+
+    @GET("api/rest_v1/page/summary/{title}")
+    fun getArticleSummary(
+        @Path("title", encoded = true) title: String
+    ): Call<FeaturedArticle>
 
 }

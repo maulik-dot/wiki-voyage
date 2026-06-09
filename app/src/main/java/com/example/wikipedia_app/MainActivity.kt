@@ -31,10 +31,14 @@ import com.example.wikipedia_app.ui.screens.LanguageSelectionScreen
 import com.example.wikipedia_app.ui.screens.SettingsScreen
 import com.example.wikipedia_app.ui.search.SearchScreen
 import com.example.wikipedia_app.ui.theme.WikipediaAppTheme
+import com.example.wikipedia_app.ui.viewmodels.ArticleViewModel
 import com.example.wikipedia_app.ui.viewmodels.BookmarkViewModel
 import com.example.wikipedia_app.ui.viewmodels.HistoryViewModel
 import com.example.wikipedia_app.ui.viewmodels.TrendingViewModel
 import com.example.wikipedia_app.ui.viewmodels.TTSViewModel
+import coil.Coil
+import coil.ImageLoader
+import okhttp3.OkHttpClient
 import java.util.*
 
 class MainActivity : ComponentActivity() {
@@ -46,6 +50,23 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // Give Coil a User-Agent so Wikimedia CDN serves images (it 403s anonymous requests)
+        Coil.setImageLoader {
+            ImageLoader.Builder(this)
+                .okHttpClient(
+                    OkHttpClient.Builder()
+                        .addInterceptor { chain ->
+                            chain.proceed(
+                                chain.request().newBuilder()
+                                    .header("User-Agent", "WikiVoyage/1.0 (Android; educational project)")
+                                    .build()
+                            )
+                        }
+                        .build()
+                )
+                .build()
+        }
+
         // Initialize database and TTS
         database = AppDatabase.getDatabase(this)
         ttsViewModel = TTSViewModel(this)
@@ -107,6 +128,9 @@ fun MainScreen(
     val gameService = remember {
         GameService(database.articleCacheDao())
     }
+    val articleViewModel = remember {
+        ArticleViewModel(bookmarkRepository)
+    }
 
     Scaffold(
         bottomBar = {
@@ -121,6 +145,7 @@ fun MainScreen(
             WikipediaNavGraph(
                 navController = navController,
                 bookmarkViewModel = bookmarkViewModel,
+                articleViewModel = articleViewModel,
                 historyViewModel = historyViewModel,
                 trendingViewModel = trendingViewModel,
                 gameService = gameService,
@@ -137,6 +162,7 @@ fun MainScreen(
 fun WikipediaNavGraph(
     navController: NavHostController,
     bookmarkViewModel: BookmarkViewModel,
+    articleViewModel: ArticleViewModel,
     historyViewModel: HistoryViewModel,
     trendingViewModel: TrendingViewModel,
     gameService: GameService,
@@ -173,7 +199,7 @@ fun WikipediaNavGraph(
             ArticleScreen(
                 title = title,
                 navController = navController,
-                viewModel = bookmarkViewModel,
+                viewModel = articleViewModel,
                 historyViewModel = historyViewModel,
                 ttsViewModel = ttsViewModel
             )

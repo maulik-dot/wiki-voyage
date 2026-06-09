@@ -29,23 +29,27 @@ class TrendingViewModel(private val repository: TrendingRepository) : ViewModel(
 
     private fun loadTrendingContent() {
         viewModelScope.launch {
-            try {
-                _isLoading.value = true
-                _error.value = null
+            _isLoading.value = true
+            _error.value = null
 
-                // Load featured content
-                repository.getTodayFeaturedContent().collect { response ->
-                    _featuredContent.value = response
-                }
+            // Run both fetches concurrently and independently so one failure doesn't block the other
+            val featuredJob = launch {
+                try {
+                    repository.getTodayFeaturedContent().collect { _featuredContent.value = it }
+                } catch (_: Exception) { /* partial failure is acceptable */ }
+            }
+            val trendingJob = launch {
+                try {
+                    repository.getTrendingArticles().collect { _trendingArticles.value = it }
+                } catch (_: Exception) {}
+            }
 
-                // Load trending articles
-                repository.getTrendingArticles().collect { articles ->
-                    _trendingArticles.value = articles
-                }
-            } catch (e: Exception) {
-                _error.value = e.message ?: "An error occurred"
-            } finally {
-                _isLoading.value = false
+            featuredJob.join()
+            trendingJob.join()
+            _isLoading.value = false
+
+            if (_featuredContent.value == null && _trendingArticles.value.isEmpty()) {
+                _error.value = "Failed to load content. Please check your connection."
             }
         }
     }

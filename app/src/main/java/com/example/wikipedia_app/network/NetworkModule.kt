@@ -19,6 +19,13 @@ object RetrofitInstance {
         .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
+        .addInterceptor { chain ->
+            chain.proceed(
+                chain.request().newBuilder()
+                    .header("User-Agent", "WikiVoyage/1.0 (Android; educational project)")
+                    .build()
+            )
+        }
         .build()
 
     fun recreateRetrofit() {

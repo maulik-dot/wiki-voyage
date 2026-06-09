@@ -16,8 +16,10 @@ import androidx.compose.material3.AlertDialogDefaults.containerColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -120,15 +122,10 @@ fun HomeScreen(
                     }
                 }
 
-                // Picture of the Day
+                // Picture of the Day (File namespace — display only, no navigation)
                 featuredContent?.image?.let { image ->
                     item {
-                        PictureOfTheDayCard(
-                            image = image,
-                            onClick = {
-                                navController.navigate(Screen.Article.createRoute(image.title))
-                            }
-                        )
+                        PictureOfTheDayCard(image = image)
                     }
                 }
 
@@ -228,15 +225,11 @@ fun FeaturedArticleCard(
 }
 
 @Composable
-fun PictureOfTheDayCard(
-    image: FeaturedImage,
-    onClick: () -> Unit
-) {
+fun PictureOfTheDayCard(image: FeaturedImage) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
-        onClick = onClick,
         colors = CardDefaults.cardColors(
             containerColor = CreamOffWhite.copy(alpha = 0.9f)
         )
@@ -264,7 +257,10 @@ fun PictureOfTheDayCard(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = image.title,
+                    text = image.title
+                        .removePrefix("File:")
+                        .substringBeforeLast(".")
+                        .replace("_", " "),
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Bold,
                         color = DarkBrown
@@ -350,13 +346,23 @@ fun TrendingArticleCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            article.thumbnailUrl?.let { url ->
+                AsyncImage(
+                    model = url,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = article.title,
+                    text = article.title.replace("_", " "),
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         color = DarkBrown

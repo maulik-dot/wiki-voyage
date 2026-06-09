@@ -2,9 +2,15 @@ package com.example.wikipedia_app.model
 
 import com.google.gson.annotations.SerializedName
 
+// Pageviews API: items[0].articles[{article, views, rank}]
 data class TrendingArticleResponse(
     @SerializedName("items")
-    val items: List<TrendingArticleItem>
+    val items: List<TrendingArticleDay>
+)
+
+data class TrendingArticleDay(
+    @SerializedName("articles")
+    val articles: List<TrendingArticleItem>
 )
 
 data class TrendingArticleItem(
@@ -14,9 +20,9 @@ data class TrendingArticleItem(
     val views: Int,
     @SerializedName("rank")
     val rank: Int,
-    @SerializedName("timestamp")
-    val timestamp: String
+    val thumbnailUrl: String? = null  // populated after a separate batch thumbnail fetch
 )
+
 
 data class FeaturedArticleResponse(
     @SerializedName("tfa")
