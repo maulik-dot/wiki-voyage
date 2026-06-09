@@ -30,9 +30,7 @@ import com.example.wikipedia_app.data.History
 import com.example.wikipedia_app.model.SearchResult
 import com.example.wikipedia_app.navigation.Screen
 import com.example.wikipedia_app.network.ApiConfig
-import com.example.wikipedia_app.ui.theme.BackgroundBeige
 import com.example.wikipedia_app.ui.theme.CreamOffWhite
-import com.example.wikipedia_app.ui.theme.DarkBrown
 import com.example.wikipedia_app.ui.theme.TealCyan
 import com.example.wikipedia_app.ui.viewmodels.HistoryViewModel
 import com.example.wikipedia_app.ui.viewmodels.SearchViewModel

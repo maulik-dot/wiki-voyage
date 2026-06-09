@@ -86,6 +86,7 @@ fun HomeScreen(
                 CircularProgressIndicator()
             }
         } else if (error != null) {
+            val errorMsg = error ?: ""
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -93,7 +94,7 @@ fun HomeScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = error!!,
+                    text = errorMsg,
                     color = MaterialTheme.colorScheme.error
                 )
             }

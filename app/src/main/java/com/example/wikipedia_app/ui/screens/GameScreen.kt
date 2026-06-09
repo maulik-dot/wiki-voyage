@@ -70,6 +70,7 @@ fun GameScreen(
             CircularProgressIndicator()
         }
     } else if (error != null) {
+        val errorMsg = error ?: ""
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -79,7 +80,7 @@ fun GameScreen(
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = error!!,
+                    text = errorMsg,
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.error
                 )

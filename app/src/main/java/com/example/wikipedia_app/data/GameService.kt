@@ -9,6 +9,7 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -26,7 +27,10 @@ class GameService(
     private val timeout = 15L
     private val maxLinks = 100
     private val gson = Gson()
-    private val prefetchScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val prefetchJob = SupervisorJob()
+    private val prefetchScope = CoroutineScope(Dispatchers.IO + prefetchJob)
+
+    fun cancelPrefetch() = prefetchJob.cancelChildren()
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(timeout, TimeUnit.SECONDS)
@@ -41,6 +45,7 @@ class GameService(
         .build()
 
     suspend fun getRandomArticle(): Article = withContext(Dispatchers.IO) {
+        cancelPrefetch() // cancel stale prefetches from any previous game
         try {
             withTimeout(TimeUnit.SECONDS.toMillis(timeout)) {
                 val title = fetchRandomTitle()

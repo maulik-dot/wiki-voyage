@@ -33,9 +33,7 @@ import com.example.wikipedia_app.model.ParsedParagraph
 import com.example.wikipedia_app.model.ParsedSection
 import com.example.wikipedia_app.navigation.Screen
 import com.example.wikipedia_app.network.ApiConfig
-import com.example.wikipedia_app.ui.theme.BackgroundBeige
 import com.example.wikipedia_app.ui.theme.CreamOffWhite
-import com.example.wikipedia_app.ui.theme.DarkBrown
 import com.example.wikipedia_app.ui.theme.TealCyan
 import com.example.wikipedia_app.ui.viewmodels.ArticleViewModel
 import com.example.wikipedia_app.ui.viewmodels.HistoryViewModel
