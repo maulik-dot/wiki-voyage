@@ -31,4 +31,10 @@ class BookmarkViewModel(private val repository: BookmarkRepository) : ViewModel(
             _isBookmarked.value = !_isBookmarked.value
         }
     }
+
+    fun removeBookmark(bookmark: Bookmark) {
+        viewModelScope.launch {
+            repository.removeBookmark(bookmark)
+        }
+    }
 } 
