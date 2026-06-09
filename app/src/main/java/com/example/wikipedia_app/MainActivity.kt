@@ -1,13 +1,14 @@
 package com.example.wikipedia_app
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -44,14 +45,12 @@ import java.util.*
 
 class MainActivity : ComponentActivity() {
     private var currentLocale: Locale = Locale.getDefault()
-    private var currentTheme: String = "System Default"
     private lateinit var database: AppDatabase
     private lateinit var ttsViewModel: TTSViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // Give Coil a User-Agent so Wikimedia CDN serves images (it 403s anonymous requests)
+
         Coil.setImageLoader {
             ImageLoader.Builder(this)
                 .okHttpClient(
@@ -68,27 +67,35 @@ class MainActivity : ComponentActivity() {
                 .build()
         }
 
-        // Initialize database and TTS
         database = AppDatabase.getDatabase(this)
         ttsViewModel = TTSViewModel(this)
 
+        val prefs = getSharedPreferences("wiki_prefs", Context.MODE_PRIVATE)
+
         setContent {
-            WikipediaAppTheme {
+            var currentTheme by remember {
+                mutableStateOf(prefs.getString("theme", "System Default") ?: "System Default")
+            }
+            val isDark = when (currentTheme) {
+                "Dark" -> true
+                "Light" -> false
+                else -> isSystemInDarkTheme()
+            }
+            WikipediaAppTheme(darkTheme = isDark) {
                 MainScreen(
                     onLanguageSelected = { languageCode ->
                         val newLocale = Locale(languageCode)
                         if (newLocale != currentLocale) {
                             currentLocale = newLocale
-                            // Update the app's locale
                             val config = resources.configuration
                             config.setLocale(newLocale)
                             resources.updateConfiguration(config, resources.displayMetrics)
-                            // Restart the activity to apply the new locale
                             recreate()
                         }
                     },
                     onThemeChanged = { theme ->
                         currentTheme = theme
+                        prefs.edit().putString("theme", theme).apply()
                     },
                     currentTheme = currentTheme,
                     database = database,

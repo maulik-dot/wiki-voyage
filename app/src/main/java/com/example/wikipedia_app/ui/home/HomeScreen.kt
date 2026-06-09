@@ -106,7 +106,7 @@ fun HomeScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(BackgroundBeige)
+                    .background(MaterialTheme.colorScheme.background)
                     .padding(padding)
             ) {
                 // Today's Featured Article
@@ -148,7 +148,7 @@ fun HomeScreen(
                             text = "Top Read Articles",
                             style = MaterialTheme.typography.titleLarge.copy(
                                 fontWeight = FontWeight.Bold,
-                                color = DarkBrown
+                                color = MaterialTheme.colorScheme.onBackground
                             ),
                             modifier = Modifier.padding(16.dp)
                         )
@@ -179,7 +179,7 @@ fun FeaturedArticleCard(
             .padding(16.dp),
         onClick = onClick,
         colors = CardDefaults.cardColors(
-            containerColor = CreamOffWhite.copy(alpha = 0.9f)
+            containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
         Column {
@@ -208,14 +208,14 @@ fun FeaturedArticleCard(
                     text = article.title,
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Bold,
-                        color = DarkBrown
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = article.extract,
                     style = MaterialTheme.typography.bodyLarge.copy(
-                        color = DarkBrown
+                        color = MaterialTheme.colorScheme.onSurface
                     ),
                     maxLines = 3
                 )
@@ -231,7 +231,7 @@ fun PictureOfTheDayCard(image: FeaturedImage) {
             .fillMaxWidth()
             .padding(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = CreamOffWhite.copy(alpha = 0.9f)
+            containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
         Column {
@@ -263,7 +263,7 @@ fun PictureOfTheDayCard(image: FeaturedImage) {
                         .replace("_", " "),
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Bold,
-                        color = DarkBrown
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 )
                 image.description?.text?.let { description ->
@@ -271,7 +271,7 @@ fun PictureOfTheDayCard(image: FeaturedImage) {
                     Text(
                         text = description,
                         style = MaterialTheme.typography.bodyLarge.copy(
-                            color = DarkBrown
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     )
                 }
@@ -290,7 +290,7 @@ fun OnThisDayCard(
             .fillMaxWidth()
             .padding(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = CreamOffWhite.copy(alpha = 0.9f)
+            containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
         Column(
@@ -308,7 +308,7 @@ fun OnThisDayCard(
                 Text(
                     text = "${event.year}: ${event.text}",
                     style = MaterialTheme.typography.bodyLarge.copy(
-                        color = DarkBrown
+                        color = MaterialTheme.colorScheme.onSurface
                     ),
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
@@ -340,7 +340,7 @@ fun TrendingArticleCard(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         onClick = onClick,
         colors = CardDefaults.cardColors(
-            containerColor = CreamOffWhite.copy(alpha = 0.9f)
+            containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
         Row(
@@ -365,7 +365,7 @@ fun TrendingArticleCard(
                     text = article.title.replace("_", " "),
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
-                        color = DarkBrown
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 )
                 Text(

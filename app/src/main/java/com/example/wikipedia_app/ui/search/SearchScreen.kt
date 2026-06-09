@@ -95,7 +95,7 @@ fun SearchScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(BackgroundBeige)
+                .background(MaterialTheme.colorScheme.background)
                 .padding(padding)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
@@ -156,7 +156,7 @@ fun SearchScreen(
                 query.isBlank() && history.isNotEmpty() -> {
                     Text(
                         "Recent",
-                        style = MaterialTheme.typography.labelLarge.copy(color = DarkBrown),
+                        style = MaterialTheme.typography.labelLarge.copy(color = MaterialTheme.colorScheme.onBackground),
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -178,7 +178,7 @@ fun SearchScreen(
                     Text(
                         text = "No results for \"$query\"",
                         style = MaterialTheme.typography.bodyLarge,
-                        color = DarkBrown.copy(alpha = 0.6f)
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
                     )
                 }
 
@@ -231,7 +231,7 @@ fun HistoryItem(
         Icon(
             Icons.Default.History,
             contentDescription = null,
-            tint = DarkBrown.copy(alpha = 0.45f),
+            tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
             modifier = Modifier
                 .size(20.dp)
                 .padding(end = 0.dp)
@@ -241,24 +241,24 @@ fun HistoryItem(
             Text(
                 text = history.title.replace("_", " "),
                 style = MaterialTheme.typography.bodyLarge,
-                color = DarkBrown
+                color = MaterialTheme.colorScheme.onBackground
             )
             Text(
                 text = formatRelativeDate(history.timestamp),
                 style = MaterialTheme.typography.bodySmall,
-                color = DarkBrown.copy(alpha = 0.5f)
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
             )
         }
         IconButton(onClick = onDeleteClick, modifier = Modifier.size(36.dp)) {
             Icon(
                 Icons.Default.Close,
                 contentDescription = "Remove",
-                tint = DarkBrown.copy(alpha = 0.35f),
+                tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.35f),
                 modifier = Modifier.size(16.dp)
             )
         }
     }
-    Divider(color = DarkBrown.copy(alpha = 0.08f))
+    Divider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f))
 }
 
 @Composable
@@ -269,14 +269,14 @@ fun SearchResultItem(result: SearchResult, onClick: () -> Unit) {
             .padding(vertical = 4.dp)
             .clickable(onClick = onClick),
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = CreamOffWhite.copy(alpha = 0.9f))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
                 text = result.title,
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Bold,
-                    color = DarkBrown
+                    color = MaterialTheme.colorScheme.onBackground
                 )
             )
             Spacer(modifier = Modifier.height(4.dp))
@@ -284,7 +284,7 @@ fun SearchResultItem(result: SearchResult, onClick: () -> Unit) {
                 text = decodeHtml(result.snippet).let {
                     if (it.length > 150) it.take(150) + "…" else it
                 },
-                style = MaterialTheme.typography.bodySmall.copy(color = DarkBrown.copy(alpha = 0.7f)),
+                style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)),
                 maxLines = 3
             )
             result.wordcount?.takeIf { it > 0 }?.let { wc ->

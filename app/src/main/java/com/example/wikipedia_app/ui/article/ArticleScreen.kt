@@ -161,7 +161,7 @@ private fun ArticleBody(
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(BackgroundBeige)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         // Header thumbnail
         article.thumbnailUrl?.let { url ->
@@ -183,7 +183,7 @@ private fun ArticleBody(
                 text = article.title,
                 style = MaterialTheme.typography.headlineMedium.copy(
                     fontWeight = FontWeight.Bold,
-                    color = DarkBrown
+                    color = MaterialTheme.colorScheme.onBackground
                 ),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
             )
@@ -231,6 +231,7 @@ private fun ParagraphItem(
     onLinkClick: (String) -> Unit
 ) {
     val linkColor = TealCyan
+    val bodyColor = MaterialTheme.colorScheme.onBackground
 
     when (paragraph) {
         is ParsedParagraph.Text -> {
@@ -255,7 +256,7 @@ private fun ParagraphItem(
             ClickableText(
                 text = annotated,
                 style = MaterialTheme.typography.bodyLarge.copy(
-                    color = DarkBrown,
+                    color = bodyColor,
                     lineHeight = 28.sp
                 ),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
@@ -271,7 +272,7 @@ private fun ParagraphItem(
                 text = paragraph.text,
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Bold,
-                    color = DarkBrown
+                    color = MaterialTheme.colorScheme.onBackground
                 ),
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)
             )
@@ -303,14 +304,14 @@ private fun ParagraphItem(
             ) {
                 Text(
                     text = "•",
-                    color = DarkBrown,
+                    color = MaterialTheme.colorScheme.onBackground,
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(end = 8.dp, top = 6.dp)
                 )
                 ClickableText(
                     text = annotated,
                     style = MaterialTheme.typography.bodyLarge.copy(
-                        color = DarkBrown,
+                        color = MaterialTheme.colorScheme.onBackground,
                         lineHeight = 26.sp
                     ),
                     onClick = { offset ->
@@ -336,7 +337,7 @@ private fun ParagraphItem(
                     Text(
                         text = caption,
                         style = MaterialTheme.typography.labelSmall.copy(
-                            color = DarkBrown.copy(alpha = 0.7f),
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                             fontStyle = FontStyle.Italic
                         ),
                         modifier = Modifier.padding(top = 4.dp)
