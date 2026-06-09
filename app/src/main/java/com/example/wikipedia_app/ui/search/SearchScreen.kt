@@ -1,248 +1,195 @@
 package com.example.wikipedia_app.ui.search
 
 import android.content.Intent
+import android.os.Build
 import android.speech.RecognizerIntent
-import android.util.Log
-import android.widget.Toast
-import androidx.activity.compose.ManagedActivityResultLauncher
+import android.text.Html
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.example.wikipedia_app.data.History
 import com.example.wikipedia_app.model.SearchResult
-import com.example.wikipedia_app.model.WikipediaResponse
-import com.example.wikipedia_app.network.RetrofitInstance
-import com.example.wikipedia_app.ui.viewmodels.HistoryViewModel
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
-import android.text.Html
-import android.os.Build
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.material3.AlertDialogDefaults.containerColor
 import com.example.wikipedia_app.navigation.Screen
-import com.example.wikipedia_app.ui.theme.CreamOffWhite
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import com.example.wikipedia_app.network.ApiConfig
-import android.content.Context
-import android.os.PowerManager
-import android.view.WindowManager
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
+import com.example.wikipedia_app.ui.theme.BackgroundBeige
+import com.example.wikipedia_app.ui.theme.CreamOffWhite
+import com.example.wikipedia_app.ui.theme.DarkBrown
+import com.example.wikipedia_app.ui.theme.TealCyan
+import com.example.wikipedia_app.ui.viewmodels.HistoryViewModel
+import com.example.wikipedia_app.ui.viewmodels.SearchViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
     navController: NavHostController,
+    viewModel: SearchViewModel,
     historyViewModel: HistoryViewModel
 ) {
-    var query by remember { mutableStateOf("") }
-    var searchResults by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(false) }
-    var totalHits by remember { mutableStateOf(0) }
-    var suggestion by remember { mutableStateOf<String?>(null) }
-    var showClearHistoryDialog by remember { mutableStateOf(false) }
-    val context = LocalContext.current
+    val query by viewModel.query.collectAsState()
+    val results by viewModel.results.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val suggestion by viewModel.suggestion.collectAsState()
+    val totalHits by viewModel.totalHits.collectAsState()
     val history by historyViewModel.history.collectAsState()
-    val lifecycleOwner = LocalLifecycleOwner.current
+    var showClearHistoryDialog by remember { mutableStateOf(false) }
 
-    // Wake lock management
-    val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-    var wakeLock: PowerManager.WakeLock? by remember { mutableStateOf(null) }
-
-    // Handle lifecycle events for wake lock
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_RESUME -> {
-                    wakeLock = powerManager.newWakeLock(
-                        PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ON_AFTER_RELEASE,
-                        "WikipediaApp:SearchScreenWakeLock"
-                    ).apply {
-                        acquire(10*60*1000L /*10 minutes*/)
-                    }
-                }
-                Lifecycle.Event.ON_PAUSE -> {
-                    wakeLock?.release()
-                    wakeLock = null
-                }
-                else -> {}
-            }
-        }
-
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            wakeLock?.release()
-            wakeLock = null
-        }
-    }
-
-    // Speech recognizer launcher
     val voiceSearchLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
+        ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
-            val data = result.data
-            val spokenText = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.get(0)
-            spokenText?.let {
-                query = it
-                fetchArticles(
-                    query = query,
-                    onLoadingChanged = { isLoading = it },
-                    onResult = { results, hits, suggest -> 
-                        searchResults = results
-                        totalHits = hits
-                        suggestion = suggest
-                    },
-                    onError = { errorMessage ->
-                        Toast.makeText(context, errorMessage, Toast.LENGTH_SHORT).show()
-                    }
-                )
-            }
-        } else {
-            Toast.makeText(context, "Speech recognition failed", Toast.LENGTH_SHORT).show()
+            result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                ?.let { viewModel.updateQuery(it) }
         }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Home") },
+                title = {
+                    Text(
+                        "Search",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = CreamOffWhite
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = CreamOffWhite)
                     }
                 },
                 actions = {
                     if (history.isNotEmpty()) {
                         IconButton(onClick = { showClearHistoryDialog = true }) {
-                            Icon(imageVector = Icons.Default.Delete, contentDescription = "Clear History")
+                            Icon(Icons.Default.Delete, contentDescription = "Clear all history", tint = CreamOffWhite)
                         }
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = TealCyan)
             )
         }
-    ) { paddingValues ->
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp)
+                .background(BackgroundBeige)
+                .padding(padding)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-            ) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = {
-                        query = it
-                        fetchArticles(
-                            query = query,
-                            onLoadingChanged = { isLoading = it },
-                            onResult = { results, hits, suggest -> 
-                                searchResults = results
-                                totalHits = hits
-                                suggestion = suggest
-                            },
-                            onError = { errorMessage ->
-                                Toast.makeText(context, errorMessage, Toast.LENGTH_SHORT).show()
+            OutlinedTextField(
+                value = query,
+                onValueChange = { viewModel.updateQuery(it) },
+                label = { Text("Search Wikipedia") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (query.isNotBlank()) {
+                            IconButton(onClick = { viewModel.updateQuery("") }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear")
                             }
-                        )
-                    },
-                    label = { Text("Search Wikipedia") },
-                    leadingIcon = {
-                        Icon(imageVector = Icons.Default.Search, contentDescription = "Search Icon")
-                    },
-                    trailingIcon = {
-                        IconButton(onClick = { startVoiceSearch(context, voiceSearchLauncher) }) {
-                            Icon(imageVector = Icons.Default.Mic, contentDescription = "Voice Search")
                         }
-                    },
-                    modifier = Modifier.weight(1f)
+                        IconButton(onClick = {
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now")
+                            }
+                            voiceSearchLauncher.launch(intent)
+                        }) {
+                            Icon(Icons.Default.Mic, contentDescription = "Voice search")
+                        }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            suggestion?.let { suggest ->
+                Text(
+                    text = "Did you mean: $suggest",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TealCyan,
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .clickable { viewModel.updateQuery(suggest) }
+                )
+            }
+
+            if (totalHits > 0 && query.isNotBlank()) {
+                Text(
+                    text = "$totalHits results",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Show search suggestion if available
-            suggestion?.let { suggest ->
-                Text(
-                    text = "Did you mean: $suggest",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .padding(vertical = 4.dp)
-                        .clickable {
-                            query = suggest
-                            fetchArticles(
-                                query = suggest,
-                                onLoadingChanged = { isLoading = it },
-                                onResult = { results, hits, suggest -> 
-                                    searchResults = results
-                                    totalHits = hits
-                                    suggestion = suggest
+            when {
+                isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = TealCyan)
+                }
+
+                query.isBlank() && history.isNotEmpty() -> {
+                    Text(
+                        "Recent",
+                        style = MaterialTheme.typography.labelLarge.copy(color = DarkBrown),
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(history, key = { it.title }) { item ->
+                            HistoryItem(
+                                history = item,
+                                onItemClick = {
+                                    navController.navigate(Screen.Article.createRoute(item.title))
                                 },
-                                onError = { errorMessage ->
-                                    Toast.makeText(context, errorMessage, Toast.LENGTH_SHORT).show()
-                                }
+                                onDeleteClick = { historyViewModel.deleteHistory(item) }
                             )
                         }
-                )
-            }
+                    }
+                }
 
-            // Show total hits
-            if (totalHits > 0) {
-                Text(
-                    text = "Found $totalHits results",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
-            }
+                query.isBlank() -> { /* no history, no query — show nothing */ }
 
-            Spacer(modifier = Modifier.height(16.dp))
+                results.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "No results for \"$query\"",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = DarkBrown.copy(alpha = 0.6f)
+                    )
+                }
 
-            if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    if (query.isEmpty() && history.isNotEmpty()) {
-                        item {
-                            Text(
-                                text = "Recent History",
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.padding(vertical = 8.dp)
+                else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(results, key = { it.title }) { result ->
+                        SearchResultItem(result) {
+                            historyViewModel.addToHistory(
+                                result.title,
+                                "${ApiConfig.WIKIPEDIA_BASE_URL}wiki/${result.title}"
                             )
-                        }
-                        items(history) { historyItem ->
-                            HistoryItem(historyItem) {
-                                navController.navigate(Screen.Article.createRoute(historyItem.title))
-                            }
-                        }
-                    } else {
-                        items(searchResults) { result ->
-                            SearchResultItem(result) {
-                                historyViewModel.addToHistory(result.title, "${ApiConfig.WIKIPEDIA_BASE_URL}wiki/${result.title}")
-                                navController.navigate(Screen.Article.createRoute(result.title))
-                            }
+                            navController.navigate(Screen.Article.createRoute(result.title))
                         }
                     }
                 }
@@ -254,59 +201,64 @@ fun SearchScreen(
         AlertDialog(
             onDismissRequest = { showClearHistoryDialog = false },
             title = { Text("Clear History") },
-            text = { Text("Are you sure you want to clear your search history?") },
+            text = { Text("Remove all search history?") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        historyViewModel.clearHistory()
-                        showClearHistoryDialog = false
-                    }
-                ) {
-                    Text("Clear")
-                }
+                TextButton(onClick = {
+                    historyViewModel.clearHistory()
+                    showClearHistoryDialog = false
+                }) { Text("Clear") }
             },
             dismissButton = {
-                TextButton(onClick = { showClearHistoryDialog = false }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { showClearHistoryDialog = false }) { Text("Cancel") }
             }
         )
     }
 }
 
 @Composable
-fun HistoryItem(history: History, onClick: () -> Unit) {
+fun HistoryItem(
+    history: History,
+    onItemClick: () -> Unit,
+    onDeleteClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp, horizontal = 16.dp)
-            .clickable { onClick() },
+            .clickable(onClick = onItemClick)
+            .padding(horizontal = 4.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = Icons.Default.History,
-            contentDescription = "History",
-            modifier = Modifier.padding(end = 16.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            Icons.Default.History,
+            contentDescription = null,
+            tint = DarkBrown.copy(alpha = 0.45f),
+            modifier = Modifier
+                .size(20.dp)
+                .padding(end = 0.dp)
         )
-        Column {
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = history.title,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
+                text = history.title.replace("_", " "),
+                style = MaterialTheme.typography.bodyLarge,
+                color = DarkBrown
             )
             Text(
-                text = history.timestamp.toString(),
+                text = formatRelativeDate(history.timestamp),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                color = DarkBrown.copy(alpha = 0.5f)
+            )
+        }
+        IconButton(onClick = onDeleteClick, modifier = Modifier.size(36.dp)) {
+            Icon(
+                Icons.Default.Close,
+                contentDescription = "Remove",
+                tint = DarkBrown.copy(alpha = 0.35f),
+                modifier = Modifier.size(16.dp)
             )
         }
     }
-    Divider(
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f),
-        thickness = 1.dp,
-        modifier = Modifier.padding(horizontal = 16.dp)
-    )
+    Divider(color = DarkBrown.copy(alpha = 0.08f))
 }
 
 @Composable
@@ -314,94 +266,51 @@ fun SearchResultItem(result: SearchResult, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp)
-            .clickable { onClick() },
+            .padding(vertical = 4.dp)
+            .clickable(onClick = onClick),
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(
-            containerColor = CreamOffWhite.copy(alpha = 0.9f)
-        )
+        colors = CardDefaults.cardColors(containerColor = CreamOffWhite.copy(alpha = 0.9f))
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
             Text(
                 text = result.title,
-                style = MaterialTheme.typography.titleMedium
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = DarkBrown
+                )
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = decodeHtml(result.snippet)
-                    .take(150) + "...",
-                style = MaterialTheme.typography.bodySmall,
+                text = decodeHtml(result.snippet).let {
+                    if (it.length > 150) it.take(150) + "…" else it
+                },
+                style = MaterialTheme.typography.bodySmall.copy(color = DarkBrown.copy(alpha = 0.7f)),
                 maxLines = 3
             )
-            result.wordcount?.let { wordcount ->
+            result.wordcount?.takeIf { it > 0 }?.let { wc ->
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "$wordcount words",
+                    text = "$wc words",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = TealCyan
                 )
             }
         }
     }
 }
 
-// Helper function to decode HTML entities properly
-fun decodeHtml(htmlText: String): String {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-        Html.fromHtml(htmlText, Html.FROM_HTML_MODE_LEGACY).toString()
-    } else {
-        Html.fromHtml(htmlText).toString()
-    }
-}
+fun decodeHtml(html: String): String =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
+        Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY).toString()
+    else
+        @Suppress("DEPRECATION") Html.fromHtml(html).toString()
 
-private fun startVoiceSearch(context: android.content.Context, voiceSearchLauncher: ManagedActivityResultLauncher<Intent, ActivityResult>) {
-    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now")
-    }
-    voiceSearchLauncher.launch(intent)
-}
-
-private fun fetchArticles(
-    query: String,
-    onLoadingChanged: (Boolean) -> Unit,
-    onResult: (List<SearchResult>, Int, String?) -> Unit,
-    onError: (String) -> Unit
-) {
-    if (query.isNotBlank()) {
-        onLoadingChanged(true)
-        RetrofitInstance.api.searchArticles(query).enqueue(object : Callback<WikipediaResponse> {
-            override fun onResponse(call: Call<WikipediaResponse>, response: Response<WikipediaResponse>) {
-                onLoadingChanged(false)
-                if (response.isSuccessful) {
-                    val wikipediaResponse = response.body()
-                    when {
-                        wikipediaResponse?.error != null -> {
-                            onError(wikipediaResponse.error.info)
-                            Log.e("API_ERROR", "Error: ${wikipediaResponse.error.code} - ${wikipediaResponse.error.info}")
-                        }
-                        wikipediaResponse?.warnings != null -> {
-                            Log.w("API_WARNING", "Warning: ${wikipediaResponse.warnings}")
-                        }
-                        else -> {
-                            val results = wikipediaResponse?.query?.search ?: emptyList()
-                            val totalHits = wikipediaResponse?.query?.searchinfo?.totalhits ?: 0
-                            val suggestion = wikipediaResponse?.query?.searchinfo?.suggestion
-                            onResult(results, totalHits, suggestion)
-                            Log.d("API_RESPONSE", "Fetched ${results.size} articles successfully.")
-                        }
-                    }
-                } else {
-                    onError("Error fetching data: ${response.code()}")
-                    Log.e("API_RESPONSE", "Response not successful: ${response.errorBody()?.string()}")
-                }
-            }
-
-            override fun onFailure(call: Call<WikipediaResponse>, t: Throwable) {
-                onLoadingChanged(false)
-                onError(t.message ?: "Unknown error")
-                Log.e("API_RESPONSE", "Network error: ${t.message}")
-            }
-        })
+private fun formatRelativeDate(date: Date): String {
+    val diff = System.currentTimeMillis() - date.time
+    return when {
+        diff < 60_000L -> "Just now"
+        diff < 3_600_000L -> "${diff / 60_000}m ago"
+        diff < 86_400_000L -> "${diff / 3_600_000}h ago"
+        else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(date)
     }
 }

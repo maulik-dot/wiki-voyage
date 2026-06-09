@@ -14,7 +14,7 @@ data class Query(
 data class SearchResult(
     val title: String,
     val snippet: String,
-    val pageId: Int,
+    @com.google.gson.annotations.SerializedName("pageid") val pageId: Int,
     val size: Int? = null,
     val wordcount: Int? = null,
     val timestamp: String? = null

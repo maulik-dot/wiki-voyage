@@ -34,6 +34,7 @@ import com.example.wikipedia_app.ui.theme.WikipediaAppTheme
 import com.example.wikipedia_app.ui.viewmodels.ArticleViewModel
 import com.example.wikipedia_app.ui.viewmodels.BookmarkViewModel
 import com.example.wikipedia_app.ui.viewmodels.HistoryViewModel
+import com.example.wikipedia_app.ui.viewmodels.SearchViewModel
 import com.example.wikipedia_app.ui.viewmodels.TrendingViewModel
 import com.example.wikipedia_app.ui.viewmodels.TTSViewModel
 import coil.Coil
@@ -131,6 +132,9 @@ fun MainScreen(
     val articleViewModel = remember {
         ArticleViewModel(bookmarkRepository)
     }
+    val searchViewModel = remember {
+        SearchViewModel()
+    }
 
     Scaffold(
         bottomBar = {
@@ -146,6 +150,7 @@ fun MainScreen(
                 navController = navController,
                 bookmarkViewModel = bookmarkViewModel,
                 articleViewModel = articleViewModel,
+                searchViewModel = searchViewModel,
                 historyViewModel = historyViewModel,
                 trendingViewModel = trendingViewModel,
                 gameService = gameService,
@@ -163,6 +168,7 @@ fun WikipediaNavGraph(
     navController: NavHostController,
     bookmarkViewModel: BookmarkViewModel,
     articleViewModel: ArticleViewModel,
+    searchViewModel: SearchViewModel,
     historyViewModel: HistoryViewModel,
     trendingViewModel: TrendingViewModel,
     gameService: GameService,
@@ -184,6 +190,7 @@ fun WikipediaNavGraph(
         composable(Screen.Search.route) {
             SearchScreen(
                 navController = navController,
+                viewModel = searchViewModel,
                 historyViewModel = historyViewModel
             )
         }
