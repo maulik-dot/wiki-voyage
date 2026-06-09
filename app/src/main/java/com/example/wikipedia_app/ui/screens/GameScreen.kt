@@ -2,6 +2,8 @@ package com.example.wikipedia_app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,9 +16,38 @@ import com.example.wikipedia_app.model.GameState
 import com.example.wikipedia_app.ui.components.WikiArticle
 import com.example.wikipedia_app.ui.theme.CreamOffWhite
 import com.example.wikipedia_app.ui.theme.TealCyan
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
+
+// Extracted to avoid duplication between LaunchedEffect and Retry handler
+private suspend fun startNewGame(
+    gameService: GameService,
+    onLoading: (Boolean) -> Unit,
+    onError: (String?) -> Unit,
+    onReady: (GameState, Long) -> Unit
+) {
+    onLoading(true)
+    onError(null)
+    try {
+        val startArticle = gameService.getRandomArticle()
+        val targetTitle = gameService.getRandomArticleTitle()
+        val readyState = GameState(
+            startArticle = startArticle,
+            currentArticle = startArticle,
+            targetArticleTitle = targetTitle,
+            startTime = System.currentTimeMillis() // timer starts when game is actually ready
+        )
+        onReady(readyState, 0L)
+    } catch (e: GameException) {
+        onError(e.message)
+    } catch (e: Exception) {
+        onError("Failed to load game: ${e.message}")
+    } finally {
+        onLoading(false)
+    }
+}
 
 @Composable
 fun GameScreen(
@@ -26,110 +57,84 @@ fun GameScreen(
     var gameState by remember { mutableStateOf(GameState()) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    var elapsedTime by remember { mutableStateOf(0L) }
     val scope = rememberCoroutineScope()
 
-    // Live timer state
-    var elapsedTime by remember { mutableStateOf(0L) }
-
-    // Initialize game
     LaunchedEffect(Unit) {
-        scope.launch {
-            try {
-                isLoading = true
-                error = null
-                val startArticle = gameService.getRandomArticle()
-                val targetTitle = gameService.getRandomArticleTitle()
-                gameState = gameState.copy(
-                    startArticle = startArticle,
-                    currentArticle = startArticle,
-                    targetArticleTitle = targetTitle
-                )
-                elapsedTime = 0L
-            } catch (e: GameException) {
-                error = e.message
-            } catch (e: Exception) {
-                error = "An unexpected error occurred: ${e.message}"
-            } finally {
-                isLoading = false
-            }
-        }
+        startNewGame(
+            gameService = gameService,
+            onLoading = { isLoading = it },
+            onError = { error = it },
+            onReady = { state, time -> gameState = state; elapsedTime = time }
+        )
     }
 
-    // Live timer effect
+    // Live timer — only ticks when game is active
     LaunchedEffect(gameState.isGameWon, isLoading, error) {
         while (!gameState.isGameWon && !isLoading && error == null) {
             elapsedTime = System.currentTimeMillis() - gameState.startTime
-            delay(100) // update every 0.1 second for smoothness
+            delay(100)
         }
         if (gameState.isGameWon) {
             elapsedTime = System.currentTimeMillis() - gameState.startTime
         }
     }
 
-    if (isLoading) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
+    when {
+        isLoading -> Box(
+            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
             contentAlignment = Alignment.Center
         ) {
-            CircularProgressIndicator()
+            CircularProgressIndicator(color = TealCyan)
         }
-    } else if (error != null) {
-        val errorMsg = error ?: ""
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+
+        error != null -> {
+            val errorMsg = error ?: ""
+            Box(
+                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = errorMsg,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.error
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = {
-                        error = null
-                        isLoading = true
-                        scope.launch {
-                            try {
-                                val startArticle = gameService.getRandomArticle()
-                                val targetTitle = gameService.getRandomArticleTitle()
-                                gameState = gameState.copy(
-                                    startArticle = startArticle,
-                                    currentArticle = startArticle,
-                                    targetArticleTitle = targetTitle
-                                )
-                                elapsedTime = 0L
-                            } catch (e: GameException) {
-                                error = e.message
-                            } catch (e: Exception) {
-                                error = "An unexpected error occurred: ${e.message}"
-                            } finally {
-                                isLoading = false
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = TealCyan)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(32.dp)
                 ) {
-                    Text("Retry", color = CreamOffWhite)
+                    Text(
+                        text = errorMsg,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                startNewGame(
+                                    gameService = gameService,
+                                    onLoading = { isLoading = it },
+                                    onError = { error = it },
+                                    onReady = { state, time -> gameState = state; elapsedTime = time }
+                                )
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = TealCyan)
+                    ) {
+                        Text("Retry", color = CreamOffWhite)
+                    }
                 }
             }
         }
-    } else if (gameState.isGameWon) {
-        GameWonScreen(
+
+        gameState.isGameWon -> GameWonScreen(
             steps = gameState.steps,
             timeElapsed = elapsedTime,
             onPlayAgain = onPlayAgain
         )
-    } else {
-        GameInProgressScreen(
+
+        else -> GameInProgressScreen(
             gameState = gameState,
             elapsedTime = elapsedTime,
             onLinkClick = { link ->
                 scope.launch {
+                    val articleBeforeNav = gameState.currentArticle ?: return@launch
                     try {
                         isLoading = true
                         error = null
@@ -137,7 +142,8 @@ fun GameScreen(
                         val isWon = newArticle.title == gameState.targetArticleTitle
                         gameState = gameState.copy(
                             currentArticle = newArticle,
-                            navigationPath = gameState.navigationPath + newArticle,
+                            // Fix: save the article we're LEAVING, not the one we're going TO
+                            navigationPath = gameState.navigationPath + articleBeforeNav,
                             steps = gameState.steps + 1,
                             isGameWon = isWon
                         )
@@ -152,9 +158,8 @@ fun GameScreen(
             },
             onBackClick = {
                 if (gameState.navigationPath.isNotEmpty()) {
-                    val previousArticle = gameState.navigationPath.last()
                     gameState = gameState.copy(
-                        currentArticle = previousArticle,
+                        currentArticle = gameState.navigationPath.last(),
                         navigationPath = gameState.navigationPath.dropLast(1),
                         steps = gameState.steps - 1
                     )
@@ -222,16 +227,24 @@ fun GameInProgressScreen(
             }
         }
 
-        // Back button
+        // Back button — only shown after at least one navigation
         if (gameState.navigationPath.isNotEmpty()) {
-            Button(
+            OutlinedButton(
                 onClick = onBackClick,
                 modifier = Modifier
-                    .padding(start = 8.dp, top = 4.dp)
+                    .padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
                     .align(Alignment.Start),
-                colors = ButtonDefaults.buttonColors(containerColor = TealCyan)
+                border = ButtonDefaults.outlinedButtonBorder.copy(
+                    width = 1.dp
+                )
             ) {
-                Text("← Back", color = CreamOffWhite)
+                Icon(
+                    Icons.Default.ArrowBack,
+                    contentDescription = "Back",
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text("Back")
             }
         }
 
