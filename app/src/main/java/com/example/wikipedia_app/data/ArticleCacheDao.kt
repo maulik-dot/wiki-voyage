@@ -34,4 +34,7 @@ interface ArticleCacheDao {
 
     @Query("SELECT * FROM article_cache WHERE isHyperlink = 1 ORDER BY timestamp DESC")
     suspend fun getAllHyperlinks(): List<ArticleCache>
+
+    @Query("DELETE FROM article_cache")
+    suspend fun clearAll()
 } 

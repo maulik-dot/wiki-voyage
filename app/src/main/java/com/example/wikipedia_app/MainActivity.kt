@@ -16,7 +16,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import androidx.room.Room
 import com.example.wikipedia_app.data.AppDatabase
 import com.example.wikipedia_app.data.BookmarkRepository
 import com.example.wikipedia_app.data.GameService
@@ -36,6 +35,7 @@ import com.example.wikipedia_app.ui.viewmodels.ArticleViewModel
 import com.example.wikipedia_app.ui.viewmodels.BookmarkViewModel
 import com.example.wikipedia_app.ui.viewmodels.HistoryViewModel
 import com.example.wikipedia_app.ui.viewmodels.SearchViewModel
+import com.example.wikipedia_app.ui.viewmodels.SettingsViewModel
 import com.example.wikipedia_app.ui.viewmodels.TrendingViewModel
 import com.example.wikipedia_app.ui.viewmodels.TTSViewModel
 import coil.Coil
@@ -46,7 +46,6 @@ import java.util.*
 class MainActivity : ComponentActivity() {
     private var currentLocale: Locale = Locale.getDefault()
     private lateinit var database: AppDatabase
-    private lateinit var ttsViewModel: TTSViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,19 +67,39 @@ class MainActivity : ComponentActivity() {
         }
 
         database = AppDatabase.getDatabase(this)
-        ttsViewModel = TTSViewModel(this)
-
         val prefs = getSharedPreferences("wiki_prefs", Context.MODE_PRIVATE)
 
         setContent {
             var currentTheme by remember {
                 mutableStateOf(prefs.getString("theme", "System Default") ?: "System Default")
             }
+            var textSize by remember {
+                mutableStateOf(prefs.getString("text_size", "Normal") ?: "Normal")
+            }
+            var speechRate by remember {
+                mutableStateOf(prefs.getFloat("speech_rate", 1.0f))
+            }
+            var speechPitch by remember {
+                mutableStateOf(prefs.getFloat("speech_pitch", 1.0f))
+            }
+
+            // TTSViewModel created with saved rate/pitch so they apply from the first word
+            val ttsViewModel = remember {
+                TTSViewModel(this@MainActivity, speechRate, speechPitch)
+            }
+
             val isDark = when (currentTheme) {
                 "Dark" -> true
                 "Light" -> false
                 else -> isSystemInDarkTheme()
             }
+            val textScale = when (textSize) {
+                "Small" -> 0.85f
+                "Large" -> 1.15f
+                "Huge" -> 1.3f
+                else -> 1.0f
+            }
+
             WikipediaAppTheme(darkTheme = isDark) {
                 MainScreen(
                     onLanguageSelected = { languageCode ->
@@ -98,6 +117,24 @@ class MainActivity : ComponentActivity() {
                         prefs.edit().putString("theme", theme).apply()
                     },
                     currentTheme = currentTheme,
+                    textSize = textSize,
+                    onTextSizeChanged = { size ->
+                        textSize = size
+                        prefs.edit().putString("text_size", size).apply()
+                    },
+                    speechRate = speechRate,
+                    onSpeechRateChanged = { rate ->
+                        speechRate = rate
+                        prefs.edit().putFloat("speech_rate", rate).apply()
+                        ttsViewModel.updateSpeechRate(rate)
+                    },
+                    speechPitch = speechPitch,
+                    onSpeechPitchChanged = { pitch ->
+                        speechPitch = pitch
+                        prefs.edit().putFloat("speech_pitch", pitch).apply()
+                        ttsViewModel.updateSpeechPitch(pitch)
+                    },
+                    textScale = textScale,
                     database = database,
                     ttsViewModel = ttsViewModel
                 )
@@ -111,48 +148,31 @@ fun MainScreen(
     onLanguageSelected: (String) -> Unit,
     onThemeChanged: (String) -> Unit,
     currentTheme: String,
+    textSize: String,
+    onTextSizeChanged: (String) -> Unit,
+    speechRate: Float,
+    onSpeechRateChanged: (Float) -> Unit,
+    speechPitch: Float,
+    onSpeechPitchChanged: (Float) -> Unit,
+    textScale: Float,
     database: AppDatabase,
     ttsViewModel: TTSViewModel
 ) {
     val navController = rememberNavController()
-    val bookmarkRepository = remember {
-        BookmarkRepository(database.bookmarkDao())
-    }
-    val bookmarkViewModel = remember {
-        BookmarkViewModel(bookmarkRepository)
-    }
-    val historyRepository = remember {
-        HistoryRepository(database.historyDao())
-    }
-    val historyViewModel = remember {
-        HistoryViewModel(historyRepository)
-    }
-    val trendingRepository = remember {
-        TrendingRepository()
-    }
-    val trendingViewModel = remember {
-        TrendingViewModel(trendingRepository)
-    }
-    val gameService = remember {
-        GameService(database.articleCacheDao())
-    }
-    val articleViewModel = remember {
-        ArticleViewModel(bookmarkRepository)
-    }
-    val searchViewModel = remember {
-        SearchViewModel()
-    }
+    val bookmarkRepository = remember { BookmarkRepository(database.bookmarkDao()) }
+    val bookmarkViewModel = remember { BookmarkViewModel(bookmarkRepository) }
+    val historyRepository = remember { HistoryRepository(database.historyDao()) }
+    val historyViewModel = remember { HistoryViewModel(historyRepository) }
+    val trendingViewModel = remember { TrendingViewModel(TrendingRepository()) }
+    val gameService = remember { GameService(database.articleCacheDao()) }
+    val articleViewModel = remember { ArticleViewModel(bookmarkRepository) }
+    val searchViewModel = remember { SearchViewModel() }
+    val settingsViewModel = remember { SettingsViewModel(database.articleCacheDao()) }
 
     Scaffold(
-        bottomBar = {
-            BottomNavBar(navController)
-        }
+        bottomBar = { BottomNavBar(navController) }
     ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
+        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
             WikipediaNavGraph(
                 navController = navController,
                 bookmarkViewModel = bookmarkViewModel,
@@ -162,8 +182,16 @@ fun MainScreen(
                 trendingViewModel = trendingViewModel,
                 gameService = gameService,
                 ttsViewModel = ttsViewModel,
+                settingsViewModel = settingsViewModel,
                 currentTheme = currentTheme,
                 onThemeChanged = onThemeChanged,
+                textSize = textSize,
+                onTextSizeChanged = onTextSizeChanged,
+                speechRate = speechRate,
+                onSpeechRateChanged = onSpeechRateChanged,
+                speechPitch = speechPitch,
+                onSpeechPitchChanged = onSpeechPitchChanged,
+                textScale = textScale,
                 onLanguageSelected = onLanguageSelected
             )
         }
@@ -180,19 +208,21 @@ fun WikipediaNavGraph(
     trendingViewModel: TrendingViewModel,
     gameService: GameService,
     ttsViewModel: TTSViewModel,
+    settingsViewModel: SettingsViewModel,
     currentTheme: String,
     onThemeChanged: (String) -> Unit,
+    textSize: String,
+    onTextSizeChanged: (String) -> Unit,
+    speechRate: Float,
+    onSpeechRateChanged: (Float) -> Unit,
+    speechPitch: Float,
+    onSpeechPitchChanged: (Float) -> Unit,
+    textScale: Float,
     onLanguageSelected: (String) -> Unit
 ) {
-    NavHost(
-        navController = navController,
-        startDestination = Screen.Home.route
-    ) {
+    NavHost(navController = navController, startDestination = Screen.Home.route) {
         composable(Screen.Home.route) {
-            HomeScreen(
-                navController = navController,
-                viewModel = trendingViewModel
-            )
+            HomeScreen(navController = navController, viewModel = trendingViewModel)
         }
         composable(Screen.Search.route) {
             SearchScreen(
@@ -203,11 +233,7 @@ fun WikipediaNavGraph(
         }
         composable(
             route = "article/{title}",
-            arguments = listOf(
-                navArgument("title") {
-                    type = NavType.StringType
-                }
-            )
+            arguments = listOf(navArgument("title") { type = NavType.StringType })
         ) { backStackEntry ->
             val title = backStackEntry.arguments?.getString("title") ?: ""
             ArticleScreen(
@@ -215,7 +241,8 @@ fun WikipediaNavGraph(
                 navController = navController,
                 viewModel = articleViewModel,
                 historyViewModel = historyViewModel,
-                ttsViewModel = ttsViewModel
+                ttsViewModel = ttsViewModel,
+                textScale = textScale
             )
         }
         composable(Screen.Bookmarks.route) {
@@ -223,8 +250,7 @@ fun WikipediaNavGraph(
                 navController = navController,
                 viewModel = bookmarkViewModel,
                 onBookmarkClick = { url ->
-                    val title = url.substringAfterLast("/")
-                    navController.navigate(Screen.Article.createRoute(title))
+                    navController.navigate(Screen.Article.createRoute(url.substringAfterLast("/")))
                 }
             )
         }
@@ -242,7 +268,14 @@ fun WikipediaNavGraph(
             SettingsScreen(
                 navController = navController,
                 currentTheme = currentTheme,
-                onThemeChanged = onThemeChanged
+                onThemeChanged = onThemeChanged,
+                textSize = textSize,
+                onTextSizeChanged = onTextSizeChanged,
+                speechRate = speechRate,
+                onSpeechRateChanged = onSpeechRateChanged,
+                speechPitch = speechPitch,
+                onSpeechPitchChanged = onSpeechPitchChanged,
+                settingsViewModel = settingsViewModel
             )
         }
         composable(Screen.LanguageSelection.route) {

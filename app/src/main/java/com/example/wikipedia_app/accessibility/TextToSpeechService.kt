@@ -8,17 +8,24 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.util.*
 
-class TextToSpeechService(private val context: Context) {
+class TextToSpeechService(
+    private val context: Context,
+    private val initialRate: Float = 1.0f,
+    private val initialPitch: Float = 1.0f
+) {
     private var textToSpeech: TextToSpeech? = null
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: StateFlow<Boolean> = _isSpeaking
     private var currentText: String = ""
     private var currentIndex: Int = 0
-    private val CHUNK_SIZE = 1000 // Maximum characters per chunk
+    private val CHUNK_SIZE = 1000
 
     init {
         initializeTTS()
     }
+
+    fun setSpeechRate(rate: Float) { textToSpeech?.setSpeechRate(rate) }
+    fun setSpeechPitch(pitch: Float) { textToSpeech?.setPitch(pitch) }
 
     private fun initializeTTS() {
         Log.d("TTS", "Initializing TextToSpeech")
@@ -36,9 +43,8 @@ class TextToSpeechService(private val context: Context) {
                         }
                         else -> {
                             Log.d("TTS", "Language set successfully")
-                            // Set speech rate and pitch
-                            textToSpeech?.setSpeechRate(1.0f)
-                            textToSpeech?.setPitch(1.0f)
+                            textToSpeech?.setSpeechRate(initialRate)
+                            textToSpeech?.setPitch(initialPitch)
                         }
                     }
                 }

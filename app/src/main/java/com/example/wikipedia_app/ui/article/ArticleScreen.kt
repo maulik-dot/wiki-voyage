@@ -48,7 +48,8 @@ fun ArticleScreen(
     title: String,
     viewModel: ArticleViewModel,
     historyViewModel: HistoryViewModel,
-    ttsViewModel: TTSViewModel
+    ttsViewModel: TTSViewModel,
+    textScale: Float = 1.0f
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isBookmarked by viewModel.isBookmarked.collectAsState()
@@ -145,7 +146,8 @@ fun ArticleScreen(
                     onLinkClick = { target ->
                         navController.navigate(Screen.Article.createRoute(target))
                     },
-                    modifier = Modifier.padding(padding)
+                    modifier = Modifier.padding(padding),
+                    textScale = textScale
                 )
             }
         }
@@ -156,7 +158,8 @@ fun ArticleScreen(
 private fun ArticleBody(
     article: ParsedArticle,
     onLinkClick: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    textScale: Float = 1.0f
 ) {
     LazyColumn(
         modifier = modifier
@@ -216,7 +219,8 @@ private fun ArticleBody(
             items(section.paragraphs) { paragraph ->
                 ParagraphItem(
                     paragraph = paragraph,
-                    onLinkClick = onLinkClick
+                    onLinkClick = onLinkClick,
+                    textScale = textScale
                 )
             }
         }
@@ -228,10 +232,13 @@ private fun ArticleBody(
 @Composable
 private fun ParagraphItem(
     paragraph: ParsedParagraph,
-    onLinkClick: (String) -> Unit
+    onLinkClick: (String) -> Unit,
+    textScale: Float = 1.0f
 ) {
     val linkColor = TealCyan
     val bodyColor = MaterialTheme.colorScheme.onBackground
+    val bodyFontSize = (MaterialTheme.typography.bodyLarge.fontSize.value * textScale).sp
+    val bodyLineHeight = (28f * textScale).sp
 
     when (paragraph) {
         is ParsedParagraph.Text -> {
@@ -257,7 +264,8 @@ private fun ParagraphItem(
                 text = annotated,
                 style = MaterialTheme.typography.bodyLarge.copy(
                     color = bodyColor,
-                    lineHeight = 28.sp
+                    fontSize = bodyFontSize,
+                    lineHeight = bodyLineHeight
                 ),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                 onClick = { offset ->
