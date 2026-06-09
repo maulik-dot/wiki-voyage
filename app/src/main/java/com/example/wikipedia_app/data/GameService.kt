@@ -1,29 +1,53 @@
 package com.example.wikipedia_app.data
 
+import android.util.Log
 import com.example.wikipedia_app.model.Article
 import com.example.wikipedia_app.model.WikiLink
+import com.google.gson.Gson
+import com.google.gson.JsonParser
+import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
+import java.io.IOException
 import java.net.URLEncoder
 import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
-class GameService {
-    private val baseUrl = "https://en.wikipedia.org/wiki/"
-    private val timeout = 10L // seconds
-    private val maxLinks = 100 // Limit number of links to prevent overload
+class GameService(
+    private val articleCacheDao: ArticleCacheDao
+) {
+    private val timeout = 15L
+    private val maxLinks = 100
+    private val gson = Gson()
+    private val prefetchScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(timeout, TimeUnit.SECONDS)
+        .readTimeout(timeout, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            chain.proceed(
+                chain.request().newBuilder()
+                    .header("User-Agent", "WikiVoyage/1.0 (Android; educational project)")
+                    .build()
+            )
+        }
+        .build()
 
     suspend fun getRandomArticle(): Article = withContext(Dispatchers.IO) {
         try {
             withTimeout(TimeUnit.SECONDS.toMillis(timeout)) {
-                val url = "https://en.wikipedia.org/wiki/Special:Random"
-                val doc = Jsoup.connect(url)
-                    .timeout(TimeUnit.SECONDS.toMillis(timeout).toInt())
-                    .get()
-                parseArticle(doc)
+                val title = fetchRandomTitle()
+                val article = fetchArticleFromApi(title)
+                prefetchHyperlinks(article)
+                cacheArticle(article, isGameArticle = true)
+                article
             }
         } catch (e: Exception) {
             when (e) {
@@ -34,14 +58,22 @@ class GameService {
     }
 
     suspend fun getArticle(title: String): Article = withContext(Dispatchers.IO) {
+        val cached = articleCacheDao.getArticle(title)
+        if (cached != null) {
+            Log.d("GameService", "Loaded '$title' from cache.")
+            return@withContext Article(
+                title = cached.title,
+                content = cached.content,
+                links = gson.fromJson(cached.links, object : TypeToken<List<WikiLink>>() {}.type)
+            )
+        }
         try {
             withTimeout(TimeUnit.SECONDS.toMillis(timeout)) {
-                val encodedTitle = URLEncoder.encode(title, "UTF-8")
-                val url = "$baseUrl$encodedTitle"
-                val doc = Jsoup.connect(url)
-                    .timeout(TimeUnit.SECONDS.toMillis(timeout).toInt())
-                    .get()
-                parseArticle(doc)
+                Log.d("GameService", "Fetching '$title' from API.")
+                val article = fetchArticleFromApi(title)
+                prefetchHyperlinks(article)
+                cacheArticle(article, isGameArticle = true)
+                article
             }
         } catch (e: Exception) {
             when (e) {
@@ -51,29 +83,86 @@ class GameService {
         }
     }
 
-    private fun parseArticle(doc: Document): Article {
-        val title = doc.select("h1#firstHeading").text()
-        val content = doc.select("div#mw-content-text").text()
-        val links = extractLinks(doc)
-        return Article(title, content, links)
+    private fun fetchRandomTitle(): String {
+        val json = fetchJson(
+            "https://en.wikipedia.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=1&format=json"
+        )
+        return json.getAsJsonObject("query")
+            .getAsJsonArray("random")
+            .get(0).asJsonObject
+            .get("title").asString
     }
 
-    private fun extractLinks(doc: Document): List<WikiLink> {
-        return doc.select("div#mw-content-text a[href^='/wiki/']")
-            .toList() // <-- This fixes the error!
+    private fun fetchArticleFromApi(title: String): Article {
+        val encodedTitle = URLEncoder.encode(title, "UTF-8")
+        val json = fetchJson(
+            "https://en.wikipedia.org/w/api.php?action=parse&page=$encodedTitle" +
+            "&prop=text&format=json&formatversion=2&disableeditsection=1&mobileformat=1"
+        )
+        if (json.has("error")) {
+            val error = json.getAsJsonObject("error").get("info").asString
+            throw IOException("API error: $error")
+        }
+        val parseObj = json.getAsJsonObject("parse")
+        val articleTitle = parseObj.get("title").asString
+        val htmlText = parseObj.get("text").asString
+        return parseArticleFromHtml(articleTitle, htmlText)
+    }
+
+    private fun fetchJson(url: String): com.google.gson.JsonObject {
+        val request = Request.Builder().url(url).build()
+        httpClient.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: throw IOException("Empty response from $url")
+            return JsonParser.parseString(body).asJsonObject
+        }
+    }
+
+    private fun parseArticleFromHtml(title: String, html: String): Article {
+        val doc = Jsoup.parse(html, "https://en.wikipedia.org/")
+        val content = doc.text()
+        val links = doc.select("a[href^='/wiki/']")
             .filter { !it.attr("href").contains(":") }
             .filter { !it.attr("href").contains("#") }
             .filter { it.text().isNotBlank() }
             .filter { !it.text().contains("edit") }
             .filter { !it.text().contains("citation needed") }
             .take(maxLinks)
-            .map { element ->
-                WikiLink(
-                    text = element.text(),
-                    target = element.attr("href").substring(6)
-                )
+            .map { WikiLink(it.text(), it.attr("href").substring(6)) }
+            .distinctBy { it.target }
+        return Article(title, content, links)
+    }
+
+    private fun prefetchHyperlinks(article: Article) {
+        article.links.forEach { link ->
+            prefetchScope.launch {
+                Log.d("GameService", "Prefetching '${link.target}'...")
+                try {
+                    val prefetched = fetchArticleFromApi(link.target)
+                    cacheArticle(prefetched, isGameArticle = false, isHyperlink = true, parentArticle = article.title)
+                    Log.d("GameService", "Prefetched '${link.target}'.")
+                } catch (_: Exception) {
+                    Log.d("GameService", "Failed to prefetch '${link.target}'.")
+                }
             }
-            .distinct()
+        }
+    }
+
+    private suspend fun cacheArticle(
+        article: Article,
+        isGameArticle: Boolean = false,
+        isHyperlink: Boolean = false,
+        parentArticle: String? = null
+    ) {
+        articleCacheDao.insertArticle(
+            ArticleCache(
+                title = article.title,
+                content = article.content,
+                links = gson.toJson(article.links),
+                isGameArticle = isGameArticle,
+                isHyperlink = isHyperlink,
+                parentArticle = parentArticle
+            )
+        )
     }
 }
 

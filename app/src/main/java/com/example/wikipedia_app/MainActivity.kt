@@ -105,7 +105,7 @@ fun MainScreen(
         TrendingViewModel(trendingRepository)
     }
     val gameService = remember {
-        GameService()
+        GameService(database.articleCacheDao())
     }
 
     Scaffold(

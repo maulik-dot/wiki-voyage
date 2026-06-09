@@ -24,6 +24,10 @@ fun GameScreen(
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
+    // Live timer state
+    var elapsedTime by remember { mutableStateOf(0L) }
+
+    // Initialize game
     LaunchedEffect(Unit) {
         scope.launch {
             try {
@@ -36,18 +40,25 @@ fun GameScreen(
                     currentArticle = startArticle,
                     targetArticleTitle = targetArticle.title
                 )
+                elapsedTime = 0L
             } catch (e: GameException) {
                 error = e.message
+            } catch (e: Exception) {
+                error = "An unexpected error occurred: ${e.message}"
             } finally {
                 isLoading = false
             }
         }
     }
 
-    LaunchedEffect(gameState.startTime) {
-        while (!gameState.isGameWon) {
-            delay(1000)
-            gameState = gameState.copy() // Trigger recomposition
+    // Live timer effect
+    LaunchedEffect(gameState.isGameWon, isLoading, error) {
+        while (!gameState.isGameWon && !isLoading && error == null) {
+            elapsedTime = System.currentTimeMillis() - gameState.startTime
+            delay(100) // update every 0.1 second for smoothness
+        }
+        if (gameState.isGameWon) {
+            elapsedTime = System.currentTimeMillis() - gameState.startTime
         }
     }
 
@@ -85,8 +96,11 @@ fun GameScreen(
                                 currentArticle = startArticle,
                                 targetArticleTitle = targetArticle.title
                             )
+                            elapsedTime = 0L
                         } catch (e: GameException) {
                             error = e.message
+                        } catch (e: Exception) {
+                            error = "An unexpected error occurred: ${e.message}"
                         } finally {
                             isLoading = false
                         }
@@ -99,12 +113,13 @@ fun GameScreen(
     } else if (gameState.isGameWon) {
         GameWonScreen(
             steps = gameState.steps,
-            timeElapsed = System.currentTimeMillis() - gameState.startTime,
+            timeElapsed = elapsedTime,
             onPlayAgain = onPlayAgain
         )
     } else {
         GameInProgressScreen(
             gameState = gameState,
+            elapsedTime = elapsedTime,
             onLinkClick = { link ->
                 scope.launch {
                     try {
@@ -120,6 +135,8 @@ fun GameScreen(
                         )
                     } catch (e: GameException) {
                         error = e.message
+                    } catch (e: Exception) {
+                        error = "An unexpected error occurred: ${e.message}"
                     } finally {
                         isLoading = false
                     }
@@ -142,35 +159,48 @@ fun GameScreen(
 @Composable
 fun GameInProgressScreen(
     gameState: GameState,
+    elapsedTime: Long,
     onLinkClick: (com.example.wikipedia_app.model.WikiLink) -> Unit,
     onBackClick: () -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(8.dp)
     ) {
         // Game info header
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(8.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            ),
+            elevation = CardDefaults.cardElevation(8.dp)
         ) {
             Column(
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
                     text = "Target: ${gameState.targetArticleTitle ?: "Loading..."}",
-                    style = MaterialTheme.typography.titleLarge
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.primary
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Steps: ${gameState.steps}",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Time: ${formatTime(System.currentTimeMillis() - gameState.startTime)}",
-                    style = MaterialTheme.typography.bodyLarge
-                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Steps: ${gameState.steps}",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = "Time: ${formatTime(elapsedTime)}",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
             }
         }
 
@@ -179,8 +209,11 @@ fun GameInProgressScreen(
             Button(
                 onClick = onBackClick,
                 modifier = Modifier
-                    .padding(16.dp)
-                    .align(Alignment.Start)
+                    .padding(12.dp)
+                    .align(Alignment.Start),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary
+                )
             ) {
                 Text("Back")
             }
@@ -246,5 +279,6 @@ fun GameWonScreen(
 private fun formatTime(millis: Long): String {
     val minutes = TimeUnit.MILLISECONDS.toMinutes(millis)
     val seconds = TimeUnit.MILLISECONDS.toSeconds(millis) % 60
-    return String.format("%02d:%02d", minutes, seconds)
+    val tenths = (millis / 100) % 10
+    return String.format("%02d:%02d.%01d", minutes, seconds, tenths)
 }
