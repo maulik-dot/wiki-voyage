@@ -27,12 +27,14 @@ fun WikiArticle(
             Text(
                 text = article.title,
                 style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
         }
 
         item {
             val linkColor = MaterialTheme.colorScheme.primary
+            val textColor = MaterialTheme.colorScheme.onBackground
             val annotatedString = remember(article, linkColor) {
                 buildAnnotatedString {
                     // Find first occurrence of each link, then sort by position — O(L×N + L log L)
@@ -63,7 +65,7 @@ fun WikiArticle(
 
             ClickableText(
                 text = annotatedString,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.bodyLarge.copy(color = textColor),
                 onClick = { offset ->
                     annotatedString.getStringAnnotations(tag = "link", start = offset, end = offset)
                         .firstOrNull()
