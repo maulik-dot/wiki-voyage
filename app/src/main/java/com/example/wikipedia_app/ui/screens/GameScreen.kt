@@ -1,15 +1,19 @@
 package com.example.wikipedia_app.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.wikipedia_app.data.GameException
 import com.example.wikipedia_app.data.GameService
 import com.example.wikipedia_app.model.GameState
 import com.example.wikipedia_app.ui.components.WikiArticle
+import com.example.wikipedia_app.ui.theme.CreamOffWhite
+import com.example.wikipedia_app.ui.theme.TealCyan
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -85,29 +89,32 @@ fun GameScreen(
                     color = MaterialTheme.colorScheme.error
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = {
-                    error = null
-                    isLoading = true
-                    scope.launch {
-                        try {
-                            val startArticle = gameService.getRandomArticle()
-                            val targetTitle = gameService.getRandomArticleTitle()
-                            gameState = gameState.copy(
-                                startArticle = startArticle,
-                                currentArticle = startArticle,
-                                targetArticleTitle = targetTitle
-                            )
-                            elapsedTime = 0L
-                        } catch (e: GameException) {
-                            error = e.message
-                        } catch (e: Exception) {
-                            error = "An unexpected error occurred: ${e.message}"
-                        } finally {
-                            isLoading = false
+                Button(
+                    onClick = {
+                        error = null
+                        isLoading = true
+                        scope.launch {
+                            try {
+                                val startArticle = gameService.getRandomArticle()
+                                val targetTitle = gameService.getRandomArticleTitle()
+                                gameState = gameState.copy(
+                                    startArticle = startArticle,
+                                    currentArticle = startArticle,
+                                    targetArticleTitle = targetTitle
+                                )
+                                elapsedTime = 0L
+                            } catch (e: GameException) {
+                                error = e.message
+                            } catch (e: Exception) {
+                                error = "An unexpected error occurred: ${e.message}"
+                            } finally {
+                                isLoading = false
+                            }
                         }
-                    }
-                }) {
-                    Text("Retry")
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TealCyan)
+                ) {
+                    Text("Retry", color = CreamOffWhite)
                 }
             }
         }
@@ -167,6 +174,7 @@ fun GameInProgressScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .padding(8.dp)
     ) {
         // Game info header
@@ -174,32 +182,41 @@ fun GameInProgressScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            ),
-            elevation = CardDefaults.cardElevation(8.dp)
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(4.dp)
         ) {
             Column(
-                modifier = Modifier.padding(20.dp),
+                modifier = Modifier.padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Target: ${gameState.targetArticleTitle ?: "Loading..."}",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.primary
+                    text = "Target",
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = TealCyan
+                    )
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = gameState.targetArticleTitle ?: "Loading...",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
                         text = "Steps: ${gameState.steps}",
-                        style = MaterialTheme.typography.bodyLarge
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Time: ${formatTime(elapsedTime)}",
-                        style = MaterialTheme.typography.bodyLarge
+                        text = formatTime(elapsedTime),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TealCyan
                     )
                 }
             }
@@ -210,13 +227,11 @@ fun GameInProgressScreen(
             Button(
                 onClick = onBackClick,
                 modifier = Modifier
-                    .padding(12.dp)
+                    .padding(start = 8.dp, top = 4.dp)
                     .align(Alignment.Start),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.secondary
-                )
+                colors = ButtonDefaults.buttonColors(containerColor = TealCyan)
             ) {
-                Text("Back")
+                Text("← Back", color = CreamOffWhite)
             }
         }
 
@@ -247,32 +262,46 @@ fun GameWonScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Congratulations!",
-            style = MaterialTheme.typography.headlineLarge
+            text = "You made it!",
+            style = MaterialTheme.typography.headlineLarge.copy(
+                fontWeight = FontWeight.Bold,
+                color = TealCyan
+            )
         )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "You reached the target in:",
-            style = MaterialTheme.typography.bodyLarge
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "$steps steps",
-            style = MaterialTheme.typography.titleMedium
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = formatTime(timeElapsed),
-            style = MaterialTheme.typography.titleMedium
-        )
+        Spacer(modifier = Modifier.height(24.dp))
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "$steps steps",
+                    style = MaterialTheme.typography.displaySmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                )
+                Text(
+                    text = formatTime(timeElapsed),
+                    style = MaterialTheme.typography.titleLarge.copy(color = TealCyan)
+                )
+            }
+        }
         Spacer(modifier = Modifier.height(32.dp))
-        Button(onClick = onPlayAgain) {
-            Text("Play Again")
+        Button(
+            onClick = onPlayAgain,
+            colors = ButtonDefaults.buttonColors(containerColor = TealCyan)
+        ) {
+            Text("Play Again", color = CreamOffWhite)
         }
     }
 }
