@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -58,6 +59,21 @@ class GameService(
             when (e) {
                 is UnknownHostException -> throw GameException("No internet connection")
                 else -> throw GameException("Failed to load article: ${e.message}")
+            }
+        }
+    }
+
+    // Cheaper than getRandomArticle() — only fetches the title, no HTML parse.
+    // Use for the target article since only its title is needed for the win condition.
+    suspend fun getRandomArticleTitle(): String = withContext(Dispatchers.IO) {
+        try {
+            withTimeout(TimeUnit.SECONDS.toMillis(timeout)) {
+                fetchRandomTitle()
+            }
+        } catch (e: Exception) {
+            when (e) {
+                is UnknownHostException -> throw GameException("No internet connection")
+                else -> throw GameException("Failed to get target: ${e.message}")
             }
         }
     }
@@ -117,6 +133,9 @@ class GameService(
     private fun fetchJson(url: String): com.google.gson.JsonObject {
         val request = Request.Builder().url(url).build()
         httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("HTTP ${response.code} from $url")
+            }
             val body = response.body?.string() ?: throw IOException("Empty response from $url")
             return JsonParser.parseString(body).asJsonObject
         }
@@ -138,8 +157,10 @@ class GameService(
     }
 
     private fun prefetchHyperlinks(article: Article) {
-        article.links.forEach { link ->
+        // Limit to 10 and stagger by 400ms each to avoid hitting Wikipedia's rate limiter
+        article.links.take(10).forEachIndexed { index, link ->
             prefetchScope.launch {
+                delay(index * 400L)
                 Log.d("GameService", "Prefetching '${link.target}'...")
                 try {
                     val prefetched = fetchArticleFromApi(link.target)

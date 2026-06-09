@@ -34,11 +34,11 @@ fun GameScreen(
                 isLoading = true
                 error = null
                 val startArticle = gameService.getRandomArticle()
-                val targetArticle = gameService.getRandomArticle()
+                val targetTitle = gameService.getRandomArticleTitle()
                 gameState = gameState.copy(
                     startArticle = startArticle,
                     currentArticle = startArticle,
-                    targetArticleTitle = targetArticle.title
+                    targetArticleTitle = targetTitle
                 )
                 elapsedTime = 0L
             } catch (e: GameException) {
@@ -91,11 +91,11 @@ fun GameScreen(
                     scope.launch {
                         try {
                             val startArticle = gameService.getRandomArticle()
-                            val targetArticle = gameService.getRandomArticle()
+                            val targetTitle = gameService.getRandomArticleTitle()
                             gameState = gameState.copy(
                                 startArticle = startArticle,
                                 currentArticle = startArticle,
-                                targetArticleTitle = targetArticle.title
+                                targetArticleTitle = targetTitle
                             )
                             elapsedTime = 0L
                         } catch (e: GameException) {
