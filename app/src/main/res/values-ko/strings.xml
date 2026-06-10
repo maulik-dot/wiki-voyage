@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- App Name -->
-    <string name="app_name">위키피디아 앱</string>
+    <string name="app_name">Wiki-The-Racer</string>
 
     <!-- Navigation -->
     <string name="home">홈</string>

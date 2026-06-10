@@ -162,7 +162,7 @@ fun SettingsScreen(
 
             SectionHeader("About")
             Text(
-                text = "Wiki-Voyage 1.0\nContent from Wikipedia, the free encyclopedia.",
+                text = "Wiki-The-Racer 1.0\nContent from Wikipedia, the free encyclopedia.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
