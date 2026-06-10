@@ -74,7 +74,7 @@ fun HomeScreen(
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        "Wikipedia",
+                        "Wiki-The-Racer",
                         style = MaterialTheme.typography.headlineSmall,
                         fontFamily = FontFamily.Serif,
                         fontWeight = FontWeight.Bold
