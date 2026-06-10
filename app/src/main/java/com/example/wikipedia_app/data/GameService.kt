@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class GameService(
     private val articleCacheDao: ArticleCacheDao
 ) {
-    private val timeout = 30L
+    private val timeout = 40L
     private val maxLinks = 100
 
     // Global request throttle: every network request waits its turn so the total
@@ -44,6 +44,12 @@ class GameService(
     // scrolling — which fires a press on every link the finger crosses — collapses
     // to a single request instead of a burst.
     private val warmGen = AtomicInteger(0)
+
+    // When Wikipedia rate-limits us (429), back off ALL background work until this
+    // time so we stop feeding the penalty and let the user's taps through.
+    @Volatile
+    private var rateLimitedUntil = 0L
+    private fun isRateLimited() = System.currentTimeMillis() < rateLimitedUntil
     // The paced prefetch *loop* — cancelled on every navigation.
     private val prefetchJob = SupervisorJob()
     private val prefetchScope = CoroutineScope(Dispatchers.IO + prefetchJob)
@@ -88,8 +94,10 @@ class GameService(
                 fetched.article
             }
         } catch (e: Exception) {
-            when (e) {
-                is UnknownHostException -> throw GameException("No internet connection")
+            when {
+                e is UnknownHostException -> throw GameException("No internet connection")
+                e.message?.contains("429") == true ->
+                    throw GameException("Wikipedia is busy right now (too many requests). Wait a few seconds and tap Try again.")
                 else -> throw GameException("Failed to load article: ${e.message}")
             }
         }
@@ -127,8 +135,10 @@ class GameService(
                 article
             }
         } catch (e: Exception) {
-            when (e) {
-                is UnknownHostException -> throw GameException("No internet connection")
+            when {
+                e is UnknownHostException -> throw GameException("No internet connection")
+                e.message?.contains("429") == true ->
+                    throw GameException("Wikipedia is busy right now (too many requests). Wait a few seconds and tap Try again.")
                 else -> throw GameException("Failed to load article: ${e.message}")
             }
         }
@@ -146,7 +156,7 @@ class GameService(
             // Debounce: ignore presses that are really the start of a scroll. Only
             // the latest press still standing after the debounce window fetches.
             delay(WARM_DEBOUNCE_MS)
-            if (gen != warmGen.get()) return@launch
+            if (gen != warmGen.get() || isRateLimited()) return@launch
             try {
                 if (!isCached(target)) {
                     getOrFetch(target, isGameArticle = false, parentArticle = parentTitle)
@@ -276,10 +286,17 @@ class GameService(
                     val body = response.body?.string() ?: throw IOException("Empty response from $url")
                     return JsonParser.parseString(body).asJsonObject
                 }
-                if (response.code == 429 && attempt < MAX_RETRIES) {
+                if (response.code == 429) {
                     val retryAfterSec = response.header("Retry-After")?.toLongOrNull()
-                    backoffMs = (retryAfterSec?.times(1000) ?: (BASE_BACKOFF_MS shl attempt))
+                    val penaltyMs = (retryAfterSec?.times(1000) ?: (BASE_BACKOFF_MS shl attempt))
                         .coerceAtMost(MAX_BACKOFF_MS)
+                    // Pause background prefetch/warm for the penalty window.
+                    rateLimitedUntil = System.currentTimeMillis() + penaltyMs
+                    if (attempt < MAX_RETRIES) {
+                        backoffMs = penaltyMs
+                    } else {
+                        throw IOException("HTTP 429 (rate limited) from $url")
+                    }
                 } else {
                     throw IOException("HTTP ${response.code} from $url")
                 }
@@ -332,7 +349,7 @@ class GameService(
         prefetchScope.launch {
             delay(PREFETCH_START_DELAY_MS) // let the just-opened article settle first
             for (link in article.links.take(PREFETCH_COUNT)) {
-                if (!isActive) break
+                if (!isActive || isRateLimited()) break // don't pile onto a rate-limit penalty
                 if (isCached(link.target)) continue // already cached
                 GameViz.prefetch(article.title, link.target)
                 try {

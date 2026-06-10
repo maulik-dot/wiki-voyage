@@ -16,9 +16,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -30,6 +32,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -43,6 +47,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -103,7 +108,10 @@ fun GameScreen(
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var elapsedTime by remember { mutableLongStateOf(0L) }
+    var searchActive by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    val inProgress = !isLoading && error == null && !gameState.isGameWon && gameState.currentArticle != null
 
     LaunchedEffect(Unit) {
         startNewGame(
@@ -129,15 +137,49 @@ fun GameScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        "Wiki-The-Racer",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontFamily = FontFamily.Serif
-                    )
+                    if (searchActive) {
+                        TextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("Find in article") },
+                            singleLine = true,
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        Text(
+                            "Wiki-The-Racer",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontFamily = FontFamily.Serif
+                        )
+                    }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onExit) {
-                        Icon(Icons.Default.Close, contentDescription = "Exit game")
+                    IconButton(onClick = {
+                        if (searchActive) { searchActive = false; searchQuery = "" } else onExit()
+                    }) {
+                        Icon(
+                            if (searchActive) Icons.AutoMirrored.Filled.ArrowBack else Icons.Default.Close,
+                            contentDescription = if (searchActive) "Close search" else "Exit game"
+                        )
+                    }
+                },
+                actions = {
+                    if (searchActive) {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear")
+                            }
+                        }
+                    } else if (inProgress) {
+                        IconButton(onClick = { searchActive = true }) {
+                            Icon(Icons.Default.Search, contentDescription = "Find in article")
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -195,6 +237,7 @@ fun GameScreen(
                 else -> GameInProgress(
                     gameState = gameState,
                     elapsedTime = elapsedTime,
+                    highlight = if (searchActive) searchQuery else "",
                     onLinkPress = { link ->
                         // (D) warm the link on finger-down so the tap opens instantly
                         gameState.currentArticle?.let { gameService.warm(it.title, link.target) }
@@ -246,6 +289,7 @@ fun GameScreen(
 private fun GameInProgress(
     gameState: GameState,
     elapsedTime: Long,
+    highlight: String,
     onLinkClick: (WikiLink) -> Unit,
     onLinkPress: (WikiLink) -> Unit,
     onBackClick: () -> Unit
@@ -303,6 +347,7 @@ private fun GameInProgress(
                 article = article,
                 onLinkClick = onLinkClick,
                 onLinkPress = onLinkPress,
+                highlight = highlight,
                 modifier = Modifier
                     .weight(1f)
                     .background(MaterialTheme.colorScheme.background)
