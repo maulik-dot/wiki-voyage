@@ -1,26 +1,47 @@
 package com.example.wikipedia_app.ui.screens
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.wikipedia_app.data.Bookmark
-import com.example.wikipedia_app.navigation.Screen
-import com.example.wikipedia_app.ui.theme.CreamOffWhite
-import com.example.wikipedia_app.ui.theme.TealCyan
+import com.example.wikipedia_app.ui.components.EmptyState
 import com.example.wikipedia_app.ui.viewmodels.BookmarkViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -40,49 +61,27 @@ fun BookmarksScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Bookmarks",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = CreamOffWhite
+                        "Saved",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.Bold
                     )
                 },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = CreamOffWhite)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = TealCyan)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                )
             )
-        }
+        },
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         if (bookmarks.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.BookmarkBorder,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        "No bookmarks yet",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
-                    )
-                    Text(
-                        "Tap the bookmark icon while reading an article",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-            }
+            EmptyState(
+                icon = Icons.Outlined.BookmarkBorder,
+                title = "No saved articles",
+                subtitle = "Tap the bookmark icon while reading to save articles for later.",
+                modifier = Modifier.padding(padding)
+            )
         } else {
             LazyColumn(
                 modifier = Modifier
@@ -91,14 +90,14 @@ fun BookmarksScreen(
                     .padding(padding)
             ) {
                 items(bookmarks, key = { it.title }) { bookmark ->
-                    SwipeToDeleteBookmark(
-                        onDelete = { viewModel.removeBookmark(bookmark) }
-                    ) {
-                        BookmarkItem(
+                    key(bookmark.title) {
+                        SwipeableBookmarkRow(
                             bookmark = bookmark,
-                            onClick = { onBookmarkClick(bookmark.url) }
+                            onClick = { onBookmarkClick(bookmark.url) },
+                            onDelete = { viewModel.removeBookmark(bookmark) }
                         )
                     }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
             }
         }
@@ -107,9 +106,10 @@ fun BookmarksScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SwipeToDeleteBookmark(
-    onDelete: () -> Unit,
-    content: @Composable () -> Unit
+private fun SwipeableBookmarkRow(
+    bookmark: Bookmark,
+    onClick: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
@@ -124,77 +124,70 @@ private fun SwipeToDeleteBookmark(
         state = dismissState,
         enableDismissFromStartToEnd = false,
         backgroundContent = {
-            val color by animateColorAsState(
-                targetValue = if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart)
-                    MaterialTheme.colorScheme.error
-                else
-                    Color.Transparent,
-                label = "swipeBackground"
-            )
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(color)
-                    .padding(end = 24.dp),
+                    .background(MaterialTheme.colorScheme.errorContainer)
+                    .padding(horizontal = 24.dp),
                 contentAlignment = Alignment.CenterEnd
             ) {
-                if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.White)
-                }
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = MaterialTheme.colorScheme.onErrorContainer
+                )
             }
         }
     ) {
-        content()
+        BookmarkRow(bookmark = bookmark, onClick = onClick)
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BookmarkItem(bookmark: Bookmark, onClick: () -> Unit) {
-    Card(
+private fun BookmarkRow(bookmark: Bookmark, onClick: () -> Unit) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            .background(MaterialTheme.colorScheme.background)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = bookmark.title.replace("_", " "),
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = formatBookmarkDate(bookmark.timestamp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                )
-            }
-            Icon(
-                imageVector = Icons.Default.BookmarkBorder,
-                contentDescription = null,
-                tint = TealCyan,
-                modifier = Modifier.padding(start = 8.dp)
+        Icon(
+            Icons.Default.Bookmark,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(24.dp)
+        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = bookmark.title.replace("_", " "),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Spacer(Modifier.width(2.dp))
+            Text(
+                text = "Saved ${formatDate(bookmark.timestamp)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.outline
+        )
     }
 }
 
-private fun formatBookmarkDate(timestamp: Long): String {
+private fun formatDate(timestamp: Long): String {
     val diff = System.currentTimeMillis() - timestamp
     return when {
-        diff < 60_000L -> "Just now"
+        diff < 60_000L -> "just now"
         diff < 3_600_000L -> "${diff / 60_000}m ago"
         diff < 86_400_000L -> "${diff / 3_600_000}h ago"
-        else -> SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(timestamp))
+        diff < 7 * 86_400_000L -> "${diff / 86_400_000}d ago"
+        else -> "on " + SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(timestamp))
     }
 }

@@ -1,27 +1,61 @@
 package com.example.wikipedia_app.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.wikipedia_app.data.GameException
 import com.example.wikipedia_app.data.GameService
 import com.example.wikipedia_app.model.GameState
+import com.example.wikipedia_app.model.WikiLink
+import com.example.wikipedia_app.ui.components.LoadingState
 import com.example.wikipedia_app.ui.components.WikiArticle
-import com.example.wikipedia_app.ui.theme.CreamOffWhite
-import com.example.wikipedia_app.ui.theme.TealCyan
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
-// Extracted to avoid duplication between LaunchedEffect and Retry handler
+// Extracted to avoid duplication between LaunchedEffect and Retry handler.
 private suspend fun startNewGame(
     gameService: GameService,
     onLoading: (Boolean) -> Unit,
@@ -33,13 +67,15 @@ private suspend fun startNewGame(
     try {
         val startArticle = gameService.getRandomArticle()
         val targetTitle = gameService.getRandomArticleTitle()
-        val readyState = GameState(
-            startArticle = startArticle,
-            currentArticle = startArticle,
-            targetArticleTitle = targetTitle,
-            startTime = System.currentTimeMillis() // timer starts when game is actually ready
+        onReady(
+            GameState(
+                startArticle = startArticle,
+                currentArticle = startArticle,
+                targetArticleTitle = targetTitle,
+                startTime = System.currentTimeMillis()
+            ),
+            0L
         )
-        onReady(readyState, 0L)
     } catch (e: GameException) {
         onError(e.message)
     } catch (e: Exception) {
@@ -49,15 +85,17 @@ private suspend fun startNewGame(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GameScreen(
     gameService: GameService,
-    onPlayAgain: () -> Unit
+    onPlayAgain: () -> Unit,
+    onExit: () -> Unit
 ) {
     var gameState by remember { mutableStateOf(GameState()) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
-    var elapsedTime by remember { mutableStateOf(0L) }
+    var elapsedTime by remember { mutableLongStateOf(0L) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -69,7 +107,7 @@ fun GameScreen(
         )
     }
 
-    // Live timer — only ticks when game is active
+    // Live timer — only ticks while the game is active.
     LaunchedEffect(gameState.isGameWon, isLoading, error) {
         while (!gameState.isGameWon && !isLoading && error == null) {
             elapsedTime = System.currentTimeMillis() - gameState.startTime
@@ -80,241 +118,265 @@ fun GameScreen(
         }
     }
 
-    when {
-        isLoading -> Box(
-            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator(color = TealCyan)
-        }
-
-        error != null -> {
-            val errorMsg = error ?: ""
-            Box(
-                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(32.dp)
-                ) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
                     Text(
-                        text = errorMsg,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.error
+                        "Wikirace",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontFamily = FontFamily.Serif
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                startNewGame(
-                                    gameService = gameService,
-                                    onLoading = { isLoading = it },
-                                    onError = { error = it },
-                                    onReady = { state, time -> gameState = state; elapsedTime = time }
-                                )
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = TealCyan)
-                    ) {
-                        Text("Retry", color = CreamOffWhite)
+                },
+                navigationIcon = {
+                    IconButton(onClick = onExit) {
+                        Icon(Icons.Default.Close, contentDescription = "Exit game")
                     }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                )
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background
+    ) { padding ->
+        Box(Modifier.padding(padding)) {
+            when {
+                isLoading -> Column(
+                    Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    LoadingState(Modifier.height(80.dp))
+                    Text(
+                        "Finding two random articles…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
+
+                error != null -> com.example.wikipedia_app.ui.components.ErrorState(
+                    message = error ?: "",
+                    onRetry = {
+                        scope.launch {
+                            startNewGame(
+                                gameService = gameService,
+                                onLoading = { isLoading = it },
+                                onError = { error = it },
+                                onReady = { state, time -> gameState = state; elapsedTime = time }
+                            )
+                        }
+                    }
+                )
+
+                gameState.isGameWon -> GameWonScreen(
+                    steps = gameState.steps,
+                    timeElapsed = elapsedTime,
+                    onPlayAgain = onPlayAgain,
+                    onExit = onExit
+                )
+
+                else -> GameInProgress(
+                    gameState = gameState,
+                    elapsedTime = elapsedTime,
+                    onLinkClick = { link ->
+                        scope.launch {
+                            val leaving = gameState.currentArticle ?: return@launch
+                            try {
+                                isLoading = true
+                                error = null
+                                val newArticle = gameService.getArticle(link.target)
+                                val isWon = newArticle.title == gameState.targetArticleTitle
+                                gameState = gameState.copy(
+                                    currentArticle = newArticle,
+                                    navigationPath = gameState.navigationPath + leaving,
+                                    steps = gameState.steps + 1,
+                                    isGameWon = isWon
+                                )
+                            } catch (e: GameException) {
+                                error = e.message
+                            } catch (e: Exception) {
+                                error = "An unexpected error occurred: ${e.message}"
+                            } finally {
+                                isLoading = false
+                            }
+                        }
+                    },
+                    onBackClick = {
+                        if (gameState.navigationPath.isNotEmpty()) {
+                            gameState = gameState.copy(
+                                currentArticle = gameState.navigationPath.last(),
+                                navigationPath = gameState.navigationPath.dropLast(1),
+                                steps = gameState.steps - 1
+                            )
+                        }
+                    }
+                )
             }
         }
-
-        gameState.isGameWon -> GameWonScreen(
-            steps = gameState.steps,
-            timeElapsed = elapsedTime,
-            onPlayAgain = onPlayAgain
-        )
-
-        else -> GameInProgressScreen(
-            gameState = gameState,
-            elapsedTime = elapsedTime,
-            onLinkClick = { link ->
-                scope.launch {
-                    val articleBeforeNav = gameState.currentArticle ?: return@launch
-                    try {
-                        isLoading = true
-                        error = null
-                        val newArticle = gameService.getArticle(link.target)
-                        val isWon = newArticle.title == gameState.targetArticleTitle
-                        gameState = gameState.copy(
-                            currentArticle = newArticle,
-                            // Fix: save the article we're LEAVING, not the one we're going TO
-                            navigationPath = gameState.navigationPath + articleBeforeNav,
-                            steps = gameState.steps + 1,
-                            isGameWon = isWon
-                        )
-                    } catch (e: GameException) {
-                        error = e.message
-                    } catch (e: Exception) {
-                        error = "An unexpected error occurred: ${e.message}"
-                    } finally {
-                        isLoading = false
-                    }
-                }
-            },
-            onBackClick = {
-                if (gameState.navigationPath.isNotEmpty()) {
-                    gameState = gameState.copy(
-                        currentArticle = gameState.navigationPath.last(),
-                        navigationPath = gameState.navigationPath.dropLast(1),
-                        steps = gameState.steps - 1
-                    )
-                }
-            }
-        )
     }
 }
 
 @Composable
-fun GameInProgressScreen(
+private fun GameInProgress(
     gameState: GameState,
     elapsedTime: Long,
-    onLinkClick: (com.example.wikipedia_app.model.WikiLink) -> Unit,
+    onLinkClick: (WikiLink) -> Unit,
     onBackClick: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(8.dp)
-    ) {
-        // Game info header
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(4.dp)
+    Column(Modifier.fillMaxSize()) {
+        // Objective banner
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Target",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = TealCyan
+            Column(Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Flag, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "REACH THIS ARTICLE",
+                        style = MaterialTheme.typography.labelMedium
                     )
-                )
+                }
+                Spacer(Modifier.height(4.dp))
                 Text(
-                    text = gameState.targetArticleTitle ?: "Loading...",
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    text = (gameState.targetArticleTitle ?: "…").replace("_", " "),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontFamily = FontFamily.Serif,
+                    fontWeight = FontWeight.Bold
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(Modifier.height(12.dp))
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Steps: ${gameState.steps}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
+                    StatChip(label = "Hops", value = gameState.steps.toString())
+                    StatChip(
+                        label = "Time",
+                        value = formatTime(elapsedTime),
+                        leading = { Icon(Icons.Default.Timer, contentDescription = null, modifier = Modifier.size(14.dp)) }
                     )
-                    Text(
-                        text = formatTime(elapsedTime),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TealCyan
-                    )
+                    Spacer(Modifier.weight(1f))
+                    if (gameState.navigationPath.isNotEmpty()) {
+                        OutlinedButton(onClick = onBackClick) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Back")
+                        }
+                    }
                 }
             }
         }
 
-        // Back button — only shown after at least one navigation
-        if (gameState.navigationPath.isNotEmpty()) {
-            OutlinedButton(
-                onClick = onBackClick,
-                modifier = Modifier
-                    .padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
-                    .align(Alignment.Start),
-                border = ButtonDefaults.outlinedButtonBorder.copy(
-                    width = 1.dp
-                )
-            ) {
-                Icon(
-                    Icons.Default.ArrowBack,
-                    contentDescription = "Back",
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(Modifier.width(4.dp))
-                Text("Back")
-            }
-        }
-
-        // Article content
+        // Current article
         gameState.currentArticle?.let { article ->
             WikiArticle(
                 article = article,
                 onLinkClick = onLinkClick,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .background(MaterialTheme.colorScheme.background)
             )
-        } ?: run {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
+        } ?: LoadingState(Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun StatChip(
+    label: String,
+    value: String,
+    leading: (@Composable () -> Unit)? = null
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            leading?.invoke()
+            Text("$label ", style = MaterialTheme.typography.labelMedium)
+            Text(value, style = MaterialTheme.typography.titleSmall)
         }
     }
 }
 
 @Composable
-fun GameWonScreen(
+private fun GameWonScreen(
     steps: Int,
     timeElapsed: Long,
-    onPlayAgain: () -> Unit
+    onPlayAgain: () -> Unit,
+    onExit: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(16.dp),
+            .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(
-            text = "You made it!",
-            style = MaterialTheme.typography.headlineLarge.copy(
-                fontWeight = FontWeight.Bold,
-                color = TealCyan
-            )
+        Icon(
+            Icons.Default.EmojiEvents,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.tertiary,
+            modifier = Modifier.size(72.dp)
         )
-        Spacer(modifier = Modifier.height(24.dp))
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "$steps steps",
-                    style = MaterialTheme.typography.displaySmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                )
-                Text(
-                    text = formatTime(timeElapsed),
-                    style = MaterialTheme.typography.titleLarge.copy(color = TealCyan)
-                )
-            }
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "You made it!",
+            style = MaterialTheme.typography.displaySmall,
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(24.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            ResultStat("Hops", steps.toString())
+            ResultStat("Time", formatTime(timeElapsed))
         }
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(Modifier.height(40.dp))
         Button(
             onClick = onPlayAgain,
-            colors = ButtonDefaults.buttonColors(containerColor = TealCyan)
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
         ) {
-            Text("Play Again", color = CreamOffWhite)
+            Text("Play again")
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth()) {
+            Text("Back to Explore")
+        }
+    }
+}
+
+@Composable
+private fun ResultStat(label: String, value: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.width(120.dp)
+    ) {
+        Column(
+            Modifier.padding(vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                value,
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                label.uppercase(),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

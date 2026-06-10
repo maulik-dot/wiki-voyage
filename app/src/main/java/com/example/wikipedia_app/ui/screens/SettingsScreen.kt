@@ -1,28 +1,58 @@
 package com.example.wikipedia_app.ui.screens
 
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Brightness6
+import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.RecordVoiceOver
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.wikipedia_app.navigation.Screen
-import com.example.wikipedia_app.ui.theme.CreamOffWhite
-import com.example.wikipedia_app.ui.theme.TealCyan
 import com.example.wikipedia_app.ui.viewmodels.SettingsViewModel
-import kotlin.math.roundToInt
+
+private val THEME_OPTIONS = listOf("System Default", "Light", "Dark")
+private val TEXT_SIZE_OPTIONS = listOf("Small", "Normal", "Large", "Huge")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,19 +66,14 @@ fun SettingsScreen(
     onSpeechRateChanged: (Float) -> Unit,
     speechPitch: Float,
     onSpeechPitchChanged: (Float) -> Unit,
+    dynamicColor: Boolean,
+    onDynamicColorChanged: (Boolean) -> Unit,
     settingsViewModel: SettingsViewModel
 ) {
+    val cacheSize by settingsViewModel.cacheSize.collectAsState()
     var showThemeDialog by remember { mutableStateOf(false) }
     var showTextSizeDialog by remember { mutableStateOf(false) }
     var showClearCacheDialog by remember { mutableStateOf(false) }
-
-    val themeOptions = listOf("System Default", "Light", "Dark")
-    val textSizeOptions = listOf("Small", "Normal", "Large", "Huge")
-    val cacheSize by settingsViewModel.cacheSize.collectAsState()
-
-    // Slider local state (commit to VM only on finger-up)
-    var rateSlider by remember(speechRate) { mutableStateOf(speechRate) }
-    var pitchSlider by remember(speechPitch) { mutableStateOf(speechPitch) }
 
     Scaffold(
         topBar = {
@@ -56,188 +81,124 @@ fun SettingsScreen(
                 title = {
                     Text(
                         "Settings",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = CreamOffWhite
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.Bold
                     )
                 },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = CreamOffWhite)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = TealCyan)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                )
             )
-        }
+        },
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(padding)
+                .verticalScroll(rememberScrollState())
         ) {
-            // ── Appearance ──────────────────────────────────────────────────
             SectionHeader("Appearance")
-
-            ListItem(
-                headlineContent = { Text("Theme") },
-                supportingContent = {
-                    Text(currentTheme, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                },
-                leadingContent = { Icon(Icons.Default.Palette, contentDescription = null, tint = TealCyan) },
-                trailingContent = { ChevronIcon() },
-                modifier = Modifier.clickable { showThemeDialog = true }
+            SettingRow(
+                icon = Icons.Default.Brightness6,
+                title = "Theme",
+                subtitle = currentTheme,
+                onClick = { showThemeDialog = true }
             )
-            RowDivider()
-
-            ListItem(
-                headlineContent = { Text("Text Size") },
-                supportingContent = {
-                    Text(textSize, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                },
-                leadingContent = { Icon(Icons.Default.FormatSize, contentDescription = null, tint = TealCyan) },
-                trailingContent = { ChevronIcon() },
-                modifier = Modifier.clickable { showTextSizeDialog = true }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                SwitchRow(
+                    icon = Icons.Default.ColorLens,
+                    title = "Dynamic color",
+                    subtitle = "Use Material You wallpaper colours",
+                    checked = dynamicColor,
+                    onCheckedChange = onDynamicColorChanged
+                )
+            }
+            SettingRow(
+                icon = Icons.Default.FormatSize,
+                title = "Text size",
+                subtitle = textSize,
+                onClick = { showTextSizeDialog = true }
             )
-            RowDivider()
 
-            // ── Text-to-Speech ───────────────────────────────────────────────
-            SectionHeader("Text-to-Speech")
-
-            ListItem(
-                headlineContent = { Text("Speech Rate") },
-                supportingContent = {
-                    Column {
-                        Text(
-                            "%.1f×".format(rateSlider),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Slider(
-                            value = rateSlider,
-                            onValueChange = { rateSlider = it },
-                            onValueChangeFinished = { onSpeechRateChanged(rateSlider) },
-                            valueRange = 0.5f..2.0f,
-                            modifier = Modifier.padding(top = 4.dp),
-                            colors = SliderDefaults.colors(thumbColor = TealCyan, activeTrackColor = TealCyan)
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("0.5×", style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("2.0×", style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                },
-                leadingContent = { Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = TealCyan) }
+            SectionHeader("Text-to-speech")
+            SliderRow(
+                icon = Icons.Default.Speed,
+                title = "Speech rate",
+                value = speechRate,
+                valueRange = 0.5f..2.0f,
+                steps = 5,
+                valueLabel = String.format("%.2f×", speechRate),
+                onValueChange = onSpeechRateChanged
             )
-            RowDivider()
-
-            ListItem(
-                headlineContent = { Text("Speech Pitch") },
-                supportingContent = {
-                    Column {
-                        Text(
-                            "%.1f".format(pitchSlider),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Slider(
-                            value = pitchSlider,
-                            onValueChange = { pitchSlider = it },
-                            onValueChangeFinished = { onSpeechPitchChanged(pitchSlider) },
-                            valueRange = 0.5f..1.5f,
-                            modifier = Modifier.padding(top = 4.dp),
-                            colors = SliderDefaults.colors(thumbColor = TealCyan, activeTrackColor = TealCyan)
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Low", style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("High", style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                },
-                leadingContent = {
-                    Spacer(Modifier.size(24.dp)) // align with other rows
-                }
+            SliderRow(
+                icon = Icons.AutoMirrored.Filled.VolumeUp,
+                title = "Speech pitch",
+                value = speechPitch,
+                valueRange = 0.5f..1.5f,
+                steps = 3,
+                valueLabel = String.format("%.2f", speechPitch),
+                onValueChange = onSpeechPitchChanged
             )
-            RowDivider()
 
-            // ── Storage ──────────────────────────────────────────────────────
+            SectionHeader("Content")
+            SettingRow(
+                icon = Icons.Default.Language,
+                title = "Article language",
+                subtitle = "Choose the Wikipedia edition",
+                onClick = { navController.navigate(Screen.LanguageSelection.route) }
+            )
+
             SectionHeader("Storage")
-
-            ListItem(
-                headlineContent = { Text("Game Cache") },
-                supportingContent = {
-                    Text(
-                        if (cacheSize == 0) "Empty" else "$cacheSize cached articles",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                },
-                leadingContent = { Icon(Icons.Default.Storage, contentDescription = null, tint = TealCyan) },
-                trailingContent = {
-                    if (cacheSize > 0) {
-                        TextButton(
-                            onClick = { showClearCacheDialog = true },
-                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                        ) { Text("Clear") }
-                    }
-                }
+            SettingRow(
+                icon = Icons.Default.DeleteSweep,
+                title = "Clear game cache",
+                subtitle = if (cacheSize > 0) "$cacheSize cached articles" else "Cache is empty",
+                onClick = { if (cacheSize > 0) showClearCacheDialog = true }
             )
-            RowDivider()
 
-            // ── General ──────────────────────────────────────────────────────
-            SectionHeader("General")
-
-            ListItem(
-                headlineContent = { Text("Language") },
-                leadingContent = { Icon(Icons.Default.Language, contentDescription = null, tint = TealCyan) },
-                trailingContent = { ChevronIcon() },
-                modifier = Modifier.clickable { navController.navigate(Screen.LanguageSelection.route) }
+            SectionHeader("About")
+            Text(
+                text = "Wiki-Voyage 1.0\nContent from Wikipedia, the free encyclopedia.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
             )
-            RowDivider()
+            Spacer(Modifier.height(24.dp))
         }
     }
 
-    // ── Dialogs ──────────────────────────────────────────────────────────────
-
     if (showThemeDialog) {
         OptionPickerDialog(
-            title = "Choose Theme",
-            options = themeOptions,
-            current = currentTheme,
+            title = "Theme",
+            options = THEME_OPTIONS,
+            selected = currentTheme,
             onSelect = { onThemeChanged(it); showThemeDialog = false },
             onDismiss = { showThemeDialog = false }
         )
     }
-
     if (showTextSizeDialog) {
         OptionPickerDialog(
-            title = "Text Size",
-            options = textSizeOptions,
-            current = textSize,
+            title = "Text size",
+            options = TEXT_SIZE_OPTIONS,
+            selected = textSize,
             onSelect = { onTextSizeChanged(it); showTextSizeDialog = false },
             onDismiss = { showTextSizeDialog = false }
         )
     }
-
     if (showClearCacheDialog) {
         AlertDialog(
             onDismissRequest = { showClearCacheDialog = false },
-            title = { Text("Clear Cache") },
-            text = { Text("Remove all $cacheSize cached game articles?") },
+            title = { Text("Clear game cache") },
+            text = { Text("Remove all $cacheSize cached articles? This frees storage but the next game may load a little slower.") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        settingsViewModel.clearCache()
-                        showClearCacheDialog = false
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) { Text("Clear") }
+                TextButton(onClick = {
+                    settingsViewModel.clearCache()
+                    showClearCacheDialog = false
+                }) { Text("Clear") }
             },
             dismissButton = {
                 TextButton(onClick = { showClearCacheDialog = false }) { Text("Cancel") }
@@ -247,36 +208,97 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SectionHeader(title: String) {
+private fun SectionHeader(text: String) {
     Text(
-        text = title.uppercase(),
-        style = MaterialTheme.typography.labelMedium.copy(
-            fontWeight = FontWeight.Bold,
-            color = TealCyan
-        ),
-        modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 4.dp)
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 4.dp)
     )
 }
 
 @Composable
-private fun ChevronIcon() {
-    Icon(
-        Icons.Default.ChevronRight,
-        contentDescription = null,
-        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-    )
+private fun SettingRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String?,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
+            if (subtitle != null) {
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
 }
 
 @Composable
-private fun RowDivider() {
-    Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f))
+private fun SwitchRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String?,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
+            if (subtitle != null) {
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun SliderRow(
+    icon: ImageVector,
+    title: String,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    valueLabel: String,
+    onValueChange: (Float) -> Unit
+) {
+    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f))
+            Text(valueLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = valueRange,
+            steps = steps
+        )
+    }
 }
 
 @Composable
 private fun OptionPickerDialog(
     title: String,
     options: List<String>,
-    current: String,
+    selected: String,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -289,22 +311,19 @@ private fun OptionPickerDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onSelect(option) }
-                            .padding(vertical = 4.dp),
+                            .selectable(selected = option == selected, onClick = { onSelect(option) })
+                            .padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RadioButton(
-                            selected = option == current,
-                            onClick = { onSelect(option) }
-                        )
-                        Spacer(Modifier.width(8.dp))
+                        RadioButton(selected = option == selected, onClick = { onSelect(option) })
+                        Spacer(Modifier.size(8.dp))
                         Text(option, style = MaterialTheme.typography.bodyLarge)
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text("Done") }
         }
     )
 }

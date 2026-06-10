@@ -4,18 +4,27 @@ import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import coil.Coil
+import coil.ImageLoader
 import com.example.wikipedia_app.data.AppDatabase
 import com.example.wikipedia_app.data.BookmarkRepository
 import com.example.wikipedia_app.data.GameService
@@ -36,12 +45,10 @@ import com.example.wikipedia_app.ui.viewmodels.BookmarkViewModel
 import com.example.wikipedia_app.ui.viewmodels.HistoryViewModel
 import com.example.wikipedia_app.ui.viewmodels.SearchViewModel
 import com.example.wikipedia_app.ui.viewmodels.SettingsViewModel
-import com.example.wikipedia_app.ui.viewmodels.TrendingViewModel
 import com.example.wikipedia_app.ui.viewmodels.TTSViewModel
-import coil.Coil
-import coil.ImageLoader
+import com.example.wikipedia_app.ui.viewmodels.TrendingViewModel
 import okhttp3.OkHttpClient
-import java.util.*
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     private var currentLocale: Locale = Locale.getDefault()
@@ -49,7 +56,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
 
+        // Coil must send a User-Agent or upload.wikimedia.org returns 403 for images.
         Coil.setImageLoader {
             ImageLoader.Builder(this)
                 .okHttpClient(
@@ -63,6 +72,7 @@ class MainActivity : ComponentActivity() {
                         }
                         .build()
                 )
+                .crossfade(true)
                 .build()
         }
 
@@ -76,14 +86,10 @@ class MainActivity : ComponentActivity() {
             var textSize by remember {
                 mutableStateOf(prefs.getString("text_size", "Normal") ?: "Normal")
             }
-            var speechRate by remember {
-                mutableStateOf(prefs.getFloat("speech_rate", 1.0f))
-            }
-            var speechPitch by remember {
-                mutableStateOf(prefs.getFloat("speech_pitch", 1.0f))
-            }
+            var speechRate by remember { mutableFloatStateOf(prefs.getFloat("speech_rate", 1.0f)) }
+            var speechPitch by remember { mutableFloatStateOf(prefs.getFloat("speech_pitch", 1.0f)) }
+            var dynamicColor by remember { mutableStateOf(prefs.getBoolean("dynamic_color", true)) }
 
-            // TTSViewModel created with saved rate/pitch so they apply from the first word
             val ttsViewModel = remember {
                 TTSViewModel(this@MainActivity, speechRate, speechPitch)
             }
@@ -100,43 +106,40 @@ class MainActivity : ComponentActivity() {
                 else -> 1.0f
             }
 
-            WikipediaAppTheme(darkTheme = isDark) {
+            WikipediaAppTheme(darkTheme = isDark, dynamicColor = dynamicColor) {
                 MainScreen(
+                    database = database,
+                    ttsViewModel = ttsViewModel,
+                    currentTheme = currentTheme,
+                    onThemeChanged = { currentTheme = it; prefs.edit().putString("theme", it).apply() },
+                    textSize = textSize,
+                    onTextSizeChanged = { textSize = it; prefs.edit().putString("text_size", it).apply() },
+                    speechRate = speechRate,
+                    onSpeechRateChanged = {
+                        speechRate = it
+                        prefs.edit().putFloat("speech_rate", it).apply()
+                        ttsViewModel.updateSpeechRate(it)
+                    },
+                    speechPitch = speechPitch,
+                    onSpeechPitchChanged = {
+                        speechPitch = it
+                        prefs.edit().putFloat("speech_pitch", it).apply()
+                        ttsViewModel.updateSpeechPitch(it)
+                    },
+                    dynamicColor = dynamicColor,
+                    onDynamicColorChanged = { dynamicColor = it; prefs.edit().putBoolean("dynamic_color", it).apply() },
+                    textScale = textScale,
                     onLanguageSelected = { languageCode ->
                         val newLocale = Locale(languageCode)
                         if (newLocale != currentLocale) {
                             currentLocale = newLocale
                             val config = resources.configuration
                             config.setLocale(newLocale)
+                            @Suppress("DEPRECATION")
                             resources.updateConfiguration(config, resources.displayMetrics)
                             recreate()
                         }
-                    },
-                    onThemeChanged = { theme ->
-                        currentTheme = theme
-                        prefs.edit().putString("theme", theme).apply()
-                    },
-                    currentTheme = currentTheme,
-                    textSize = textSize,
-                    onTextSizeChanged = { size ->
-                        textSize = size
-                        prefs.edit().putString("text_size", size).apply()
-                    },
-                    speechRate = speechRate,
-                    onSpeechRateChanged = { rate ->
-                        speechRate = rate
-                        prefs.edit().putFloat("speech_rate", rate).apply()
-                        ttsViewModel.updateSpeechRate(rate)
-                    },
-                    speechPitch = speechPitch,
-                    onSpeechPitchChanged = { pitch ->
-                        speechPitch = pitch
-                        prefs.edit().putFloat("speech_pitch", pitch).apply()
-                        ttsViewModel.updateSpeechPitch(pitch)
-                    },
-                    textScale = textScale,
-                    database = database,
-                    ttsViewModel = ttsViewModel
+                    }
                 )
             }
         }
@@ -145,18 +148,20 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainScreen(
-    onLanguageSelected: (String) -> Unit,
-    onThemeChanged: (String) -> Unit,
+    database: AppDatabase,
+    ttsViewModel: TTSViewModel,
     currentTheme: String,
+    onThemeChanged: (String) -> Unit,
     textSize: String,
     onTextSizeChanged: (String) -> Unit,
     speechRate: Float,
     onSpeechRateChanged: (Float) -> Unit,
     speechPitch: Float,
     onSpeechPitchChanged: (Float) -> Unit,
+    dynamicColor: Boolean,
+    onDynamicColorChanged: (Boolean) -> Unit,
     textScale: Float,
-    database: AppDatabase,
-    ttsViewModel: TTSViewModel
+    onLanguageSelected: (String) -> Unit
 ) {
     val navController = rememberNavController()
     val bookmarkRepository = remember { BookmarkRepository(database.bookmarkDao()) }
@@ -171,8 +176,8 @@ fun MainScreen(
 
     Scaffold(
         bottomBar = { BottomNavBar(navController) }
-    ) { paddingValues ->
-        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+    ) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding)) {
             WikipediaNavGraph(
                 navController = navController,
                 bookmarkViewModel = bookmarkViewModel,
@@ -191,6 +196,8 @@ fun MainScreen(
                 onSpeechRateChanged = onSpeechRateChanged,
                 speechPitch = speechPitch,
                 onSpeechPitchChanged = onSpeechPitchChanged,
+                dynamicColor = dynamicColor,
+                onDynamicColorChanged = onDynamicColorChanged,
                 textScale = textScale,
                 onLanguageSelected = onLanguageSelected
             )
@@ -217,6 +224,8 @@ fun WikipediaNavGraph(
     onSpeechRateChanged: (Float) -> Unit,
     speechPitch: Float,
     onSpeechPitchChanged: (Float) -> Unit,
+    dynamicColor: Boolean,
+    onDynamicColorChanged: (Boolean) -> Unit,
     textScale: Float,
     onLanguageSelected: (String) -> Unit
 ) {
@@ -232,7 +241,7 @@ fun WikipediaNavGraph(
             )
         }
         composable(
-            route = "article/{title}",
+            route = Screen.Article.route,
             arguments = listOf(navArgument("title") { type = NavType.StringType })
         ) { backStackEntry ->
             val title = backStackEntry.arguments?.getString("title") ?: ""
@@ -261,7 +270,8 @@ fun WikipediaNavGraph(
                     navController.navigate(Screen.Game.route) {
                         popUpTo(Screen.Game.route) { inclusive = true }
                     }
-                }
+                },
+                onExit = { navController.popBackStack() }
             )
         }
         composable(Screen.Settings.route) {
@@ -275,6 +285,8 @@ fun WikipediaNavGraph(
                 onSpeechRateChanged = onSpeechRateChanged,
                 speechPitch = speechPitch,
                 onSpeechPitchChanged = onSpeechPitchChanged,
+                dynamicColor = dynamicColor,
+                onDynamicColorChanged = onDynamicColorChanged,
                 settingsViewModel = settingsViewModel
             )
         }

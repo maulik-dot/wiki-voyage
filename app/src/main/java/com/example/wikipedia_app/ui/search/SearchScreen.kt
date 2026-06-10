@@ -8,37 +8,60 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.outlined.SearchOff
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.example.wikipedia_app.data.History
 import com.example.wikipedia_app.model.SearchResult
 import com.example.wikipedia_app.navigation.Screen
 import com.example.wikipedia_app.network.ApiConfig
-import com.example.wikipedia_app.ui.theme.CreamOffWhite
-import com.example.wikipedia_app.ui.theme.TealCyan
+import com.example.wikipedia_app.ui.components.EmptyState
 import com.example.wikipedia_app.ui.viewmodels.HistoryViewModel
 import com.example.wikipedia_app.ui.viewmodels.SearchViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
     navController: NavHostController,
@@ -51,9 +74,9 @@ fun SearchScreen(
     val suggestion by viewModel.suggestion.collectAsState()
     val totalHits by viewModel.totalHits.collectAsState()
     val history by historyViewModel.history.collectAsState()
-    var showClearHistoryDialog by remember { mutableStateOf(false) }
+    var showClearDialog by remember { mutableStateOf(false) }
 
-    val voiceSearchLauncher = rememberLauncherForActivityResult(
+    val voiceLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
@@ -64,178 +87,158 @@ fun SearchScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "Search",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = CreamOffWhite
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = CreamOffWhite)
-                    }
-                },
-                actions = {
-                    if (history.isNotEmpty()) {
-                        IconButton(onClick = { showClearHistoryDialog = true }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Clear all history", tint = CreamOffWhite)
+    fun openArticle(title: String) {
+        historyViewModel.addToHistory(title, "${ApiConfig.WIKIPEDIA_BASE_URL}wiki/$title")
+        navController.navigate(Screen.Article.createRoute(title))
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 16.dp)
+    ) {
+        Spacer(Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = query,
+            onValueChange = viewModel::updateQuery,
+            placeholder = { Text("Search Wikipedia") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            trailingIcon = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { viewModel.updateQuery("") }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear")
                         }
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = TealCyan)
+                    IconButton(onClick = {
+                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now")
+                        }
+                        voiceLauncher.launch(intent)
+                    }) {
+                        Icon(Icons.Default.Mic, contentDescription = "Voice search")
+                    }
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(28.dp),
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Search),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        suggestion?.let { suggest ->
+            Text(
+                text = "Did you mean: $suggest",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .padding(top = 8.dp, start = 4.dp)
+                    .clickable { viewModel.updateQuery(suggest) }
             )
         }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(padding)
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-        ) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { viewModel.updateQuery(it) },
-                label = { Text("Search Wikipedia") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (query.isNotBlank()) {
-                            IconButton(onClick = { viewModel.updateQuery("") }) {
-                                Icon(Icons.Default.Clear, contentDescription = "Clear")
-                            }
-                        }
-                        IconButton(onClick = {
-                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now")
-                            }
-                            voiceSearchLauncher.launch(intent)
-                        }) {
-                            Icon(Icons.Default.Mic, contentDescription = "Voice search")
-                        }
-                    }
-                },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+
+        if (totalHits > 0 && query.isNotBlank()) {
+            Text(
+                text = "$totalHits results",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp, start = 4.dp)
             )
+        }
 
-            suggestion?.let { suggest ->
-                Text(
-                    text = "Did you mean: $suggest",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TealCyan,
-                    modifier = Modifier
-                        .padding(top = 4.dp)
-                        .clickable { viewModel.updateQuery(suggest) }
-                )
+        Spacer(Modifier.height(8.dp))
+
+        when {
+            isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             }
 
-            if (totalHits > 0 && query.isNotBlank()) {
-                Text(
-                    text = "$totalHits results",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            when {
-                isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = TealCyan)
-                }
-
-                query.isBlank() && history.isNotEmpty() -> {
+            query.isBlank() && history.isNotEmpty() -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         "Recent",
-                        style = MaterialTheme.typography.labelLarge.copy(color = MaterialTheme.colorScheme.onBackground),
-                        modifier = Modifier.padding(bottom = 4.dp)
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(history, key = { it.title }) { item ->
-                            HistoryItem(
-                                history = item,
-                                onItemClick = {
-                                    navController.navigate(Screen.Article.createRoute(item.title))
-                                },
-                                onDeleteClick = { historyViewModel.deleteHistory(item) }
-                            )
-                        }
+                    TextButton(onClick = { showClearDialog = true }) { Text("Clear all") }
+                }
+                LazyColumn(Modifier.fillMaxSize()) {
+                    items(history, key = { it.title }) { item ->
+                        HistoryRow(
+                            history = item,
+                            onClick = { openArticle(item.title) },
+                            onDelete = { historyViewModel.deleteHistory(item) }
+                        )
                     }
                 }
+            }
 
-                query.isBlank() -> { /* no history, no query — show nothing */ }
+            query.isBlank() -> EmptyState(
+                icon = Icons.Default.Search,
+                title = "Search Wikipedia",
+                subtitle = "Find articles on any topic, or use voice search."
+            )
 
-                results.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "No results for \"$query\"",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                    )
-                }
+            results.isEmpty() -> EmptyState(
+                icon = Icons.Outlined.SearchOff,
+                title = "No results",
+                subtitle = "Nothing found for \"$query\"."
+            )
 
-                else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(results, key = { it.title }) { result ->
-                        SearchResultItem(result) {
-                            historyViewModel.addToHistory(
-                                result.title,
-                                "${ApiConfig.WIKIPEDIA_BASE_URL}wiki/${result.title}"
-                            )
-                            navController.navigate(Screen.Article.createRoute(result.title))
-                        }
-                    }
+            else -> LazyColumn(Modifier.fillMaxSize()) {
+                items(results, key = { it.title }) { result ->
+                    SearchResultRow(result = result, onClick = { openArticle(result.title) })
                 }
             }
         }
     }
 
-    if (showClearHistoryDialog) {
+    if (showClearDialog) {
         AlertDialog(
-            onDismissRequest = { showClearHistoryDialog = false },
-            title = { Text("Clear History") },
-            text = { Text("Remove all search history?") },
+            onDismissRequest = { showClearDialog = false },
+            title = { Text("Clear history") },
+            text = { Text("Remove all recent searches?") },
             confirmButton = {
                 TextButton(onClick = {
                     historyViewModel.clearHistory()
-                    showClearHistoryDialog = false
+                    showClearDialog = false
                 }) { Text("Clear") }
             },
             dismissButton = {
-                TextButton(onClick = { showClearHistoryDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { showClearDialog = false }) { Text("Cancel") }
             }
         )
     }
 }
 
 @Composable
-fun HistoryItem(
-    history: History,
-    onItemClick: () -> Unit,
-    onDeleteClick: () -> Unit
-) {
+private fun HistoryRow(history: History, onClick: () -> Unit, onDelete: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onItemClick)
-            .padding(horizontal = 4.dp, vertical = 6.dp),
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             Icons.Default.History,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
-            modifier = Modifier
-                .size(20.dp)
-                .padding(end = 0.dp)
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp)
         )
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
             Text(
                 text = history.title.replace("_", " "),
                 style = MaterialTheme.typography.bodyLarge,
@@ -244,60 +247,57 @@ fun HistoryItem(
             Text(
                 text = formatRelativeDate(history.timestamp),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        IconButton(onClick = onDeleteClick, modifier = Modifier.size(36.dp)) {
+        IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
             Icon(
                 Icons.Default.Close,
                 contentDescription = "Remove",
-                tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.35f),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(16.dp)
             )
         }
     }
-    Divider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f))
 }
 
 @Composable
-fun SearchResultItem(result: SearchResult, onClick: () -> Unit) {
-    Card(
+private fun SearchResultRow(result: SearchResult, onClick: () -> Unit) {
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Text(
+            text = result.title,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        val snippet = decodeHtml(result.snippet)
+        if (snippet.isNotBlank()) {
+            Spacer(Modifier.height(4.dp))
             Text(
-                text = result.title,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = decodeHtml(result.snippet).let {
-                    if (it.length > 150) it.take(150) + "…" else it
-                },
-                style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)),
+                text = if (snippet.length > 160) snippet.take(160) + "…" else snippet,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 3
             )
-            result.wordcount?.takeIf { it > 0 }?.let { wc ->
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "$wc words",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TealCyan
-                )
-            }
         }
+        result.wordcount?.takeIf { it > 0 }?.let { wc ->
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "$wc words",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
-fun decodeHtml(html: String): String =
+private fun decodeHtml(html: String): String =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
         Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY).toString()
     else
