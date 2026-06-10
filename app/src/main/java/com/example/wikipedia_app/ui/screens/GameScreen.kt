@@ -130,7 +130,7 @@ fun GameScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Wikirace",
+                        "Wiki-The-Racer",
                         style = MaterialTheme.typography.titleLarge,
                         fontFamily = FontFamily.Serif
                     )

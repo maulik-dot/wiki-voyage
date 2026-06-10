@@ -6,6 +6,7 @@ import com.example.wikipedia_app.model.ParsedParagraph
 import com.example.wikipedia_app.model.ParsedSection
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
+import java.net.URLDecoder
 
 object ArticleParser {
 
@@ -98,7 +99,10 @@ object ArticleParser {
             .forEach { a ->
                 val href = a.attr("href")
                 if (href.contains(":")) return@forEach
-                val target = href.removePrefix("/wiki/")
+                // Decode percent-encoded slugs (non-ASCII titles) so callers encode
+                // exactly once — double-encoding yields "Bad title" API errors.
+                val rawTarget = href.removePrefix("/wiki/")
+                val target = try { URLDecoder.decode(rawTarget, "UTF-8") } catch (_: Exception) { rawTarget }
                 val text = a.text().trim()
                 if (text.isBlank()) return@forEach
                 val start = fullText.indexOf(text, cursor)

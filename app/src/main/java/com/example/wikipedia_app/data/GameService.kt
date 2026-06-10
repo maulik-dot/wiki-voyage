@@ -2,11 +2,10 @@ package com.example.wikipedia_app.data
 
 import android.util.Log
 import com.example.wikipedia_app.model.Article
+import com.example.wikipedia_app.model.ParsedParagraph
 import com.example.wikipedia_app.model.WikiLink
-import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -22,9 +21,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.jsoup.Jsoup
 import java.io.IOException
-import java.net.URLDecoder
 import java.net.URLEncoder
 import java.net.UnknownHostException
 import java.util.concurrent.ConcurrentHashMap
@@ -36,7 +33,6 @@ class GameService(
 ) {
     private val timeout = 30L
     private val maxLinks = 100
-    private val gson = Gson()
 
     // Global request throttle: every network request waits its turn so the total
     // rate stays well under Wikipedia's limiter, no matter how many sources
@@ -86,10 +82,10 @@ class GameService(
         try {
             withTimeout(TimeUnit.SECONDS.toMillis(timeout)) {
                 val title = fetchRandomTitle()
-                val article = fetchArticleFromApi(title)
-                cacheArticle(article, isGameArticle = true)
-                prefetchHyperlinks(article)
-                article
+                val fetched = fetchArticleFromApi(title)
+                cacheArticle(fetched.article.title, fetched.html, isGameArticle = true)
+                prefetchHyperlinks(fetched.article)
+                fetched.article
             }
         } catch (e: Exception) {
             when (e) {
@@ -124,8 +120,9 @@ class GameService(
                 val article = getOrFetch(title, isGameArticle = true, parentArticle = null)
                 // A visited article must be tagged as a game article so the
                 // sliding-window eviction (E) never deletes it — it may have been
-                // cached as a hyperlink by prefetch/press.
-                cacheArticle(article, isGameArticle = true)
+                // cached as a hyperlink by prefetch/press. Update flags in place
+                // (no need to re-store the HTML).
+                articleCacheDao.markAsGameArticle(article.title)
                 prefetchHyperlinks(article) // warm the next hop's links
                 article
             }
@@ -151,7 +148,7 @@ class GameService(
             delay(WARM_DEBOUNCE_MS)
             if (gen != warmGen.get()) return@launch
             try {
-                if (peekCache(target) == null) {
+                if (!isCached(target)) {
                     getOrFetch(target, isGameArticle = false, parentArticle = parentTitle)
                 }
             } catch (_: Exception) { /* best-effort */ }
@@ -189,14 +186,15 @@ class GameService(
             fetchScope.async {
                 try {
                     Log.d("GameService", "Fetching '$title' from API.")
-                    val article = fetchArticleFromApi(title)
+                    val fetched = fetchArticleFromApi(title)
                     cacheArticle(
-                        article,
+                        fetched.article.title,
+                        fetched.html,
                         isGameArticle = isGameArticle,
                         isHyperlink = !isGameArticle,
                         parentArticle = parentArticle
                     )
-                    article
+                    fetched.article
                 } finally {
                     inFlight.remove(key)
                 }
@@ -205,18 +203,22 @@ class GameService(
         return deferred.await()
     }
 
-    /** Cache lookup that tolerates slug (underscores) vs display title (spaces). */
+    /** Cache lookup (tolerates slug vs display title). Re-parses the stored HTML. */
     private suspend fun peekCache(title: String): Article? {
-        val cached = articleCacheDao.getArticle(title)
+        val row = articleCacheDao.getArticle(title)
             ?: articleCacheDao.getArticle(normalizeTitle(title))
-        return cached?.let {
-            Article(
-                title = it.title,
-                content = it.content,
-                links = gson.fromJson(it.links, object : TypeToken<List<WikiLink>>() {}.type)
-            )
+            ?: return null
+        return try {
+            buildArticle(row.title, row.content)
+        } catch (_: Exception) {
+            null
         }
     }
+
+    /** Cheap existence check (no HTML parse) for prefetch/warm skip decisions. */
+    private suspend fun isCached(title: String): Boolean =
+        articleCacheDao.getArticle(title) != null ||
+            articleCacheDao.getArticle(normalizeTitle(title)) != null
 
     private fun normalizeTitle(t: String) = t.replace('_', ' ').trim()
     private fun keyOf(t: String) = normalizeTitle(t).lowercase()
@@ -241,7 +243,9 @@ class GameService(
             .get("title").asString
     }
 
-    private suspend fun fetchArticleFromApi(title: String): Article {
+    private data class FetchedArticle(val article: Article, val html: String)
+
+    private suspend fun fetchArticleFromApi(title: String): FetchedArticle {
         rateGate()
         val encodedTitle = URLEncoder.encode(title, "UTF-8")
         val json = fetchJson(
@@ -255,7 +259,7 @@ class GameService(
         val parseObj = json.getAsJsonObject("parse")
         val articleTitle = parseObj.get("title").asString
         val htmlText = parseObj.get("text").asString
-        return parseArticleFromHtml(articleTitle, htmlText)
+        return FetchedArticle(buildArticle(articleTitle, htmlText), htmlText)
     }
 
     /**
@@ -287,38 +291,35 @@ class GameService(
         }
     }
 
-    private fun parseArticleFromHtml(title: String, html: String): Article {
-        val doc = Jsoup.parse(html, "https://en.wikipedia.org/")
-
-        // Strip the infobox/tables/refs first. Otherwise the flattened text begins
-        // with infobox soup ("Screenplay by … Produced by …") where dozens of links
-        // are crammed together with no spacing and are nearly impossible to tap —
-        // which made the first several links feel like they "don't open".
-        doc.select(
-            "table, .infobox, .navbox, .navbox-inner, .vertical-navbox, .hatnote, sup, " +
-            ".mw-editsection, .reflist, .mw-references-wrap, .sistersitebox, .gallery, " +
-            ".metadata, .noprint, .mbox-small, .thumb, figure, style, script"
-        ).remove()
-
-        val output = doc.selectFirst("div.mw-parser-output") ?: doc.body()
-        val content = output.text()
-        val links = output.select("a[href^='/wiki/']")
-            .filter { !it.attr("href").contains(":") }
-            .filter { !it.attr("href").contains("#") }
-            .filter { it.text().isNotBlank() }
-            .filter { !it.text().contains("edit") }
-            .filter { !it.text().contains("citation needed") }
-            .take(maxLinks)
-            .map {
-                // hrefs for non-ASCII titles are already percent-encoded
-                // (e.g. /wiki/%E1%B9%9Ata). Decode here so fetchArticleFromApi
-                // encodes exactly once — double-encoding yields "Bad title".
-                val raw = it.attr("href").substring(6)
-                val target = try { URLDecoder.decode(raw, "UTF-8") } catch (_: Exception) { raw }
-                WikiLink(it.text(), target)
+    /**
+     * Parses article HTML into the structured [Article] used by the game, reusing
+     * the same [ArticleParser] the reader screen uses (sections / headings / bullets,
+     * infobox & refs stripped). The flat [WikiLink] list — used for prefetch and the
+     * win check — is derived from the inline links across the prose, in reading order
+     * (so the first prefetched links are the lead-paragraph ones).
+     */
+    private fun buildArticle(title: String, html: String): Article {
+        val parsed = ArticleParser.parse(title, html, thumbnailUrl = null)
+        val links = mutableListOf<WikiLink>()
+        for (section in parsed.sections) {
+            for (p in section.paragraphs) {
+                val (content, inline) = when (p) {
+                    is ParsedParagraph.Text -> p.content to p.links
+                    is ParsedParagraph.BulletItem -> p.content to p.links
+                    else -> continue
+                }
+                for (l in inline) {
+                    if (l.start in 0..content.length && l.end in l.start..content.length) {
+                        links.add(WikiLink(content.substring(l.start, l.end), l.target))
+                    }
+                }
             }
-            .distinctBy { it.target }
-        return Article(title, content, links)
+        }
+        return Article(
+            title = parsed.title,
+            links = links.distinctBy { it.target }.take(maxLinks),
+            sections = parsed.sections
+        )
     }
 
     /**
@@ -332,7 +333,7 @@ class GameService(
             delay(PREFETCH_START_DELAY_MS) // let the just-opened article settle first
             for (link in article.links.take(PREFETCH_COUNT)) {
                 if (!isActive) break
-                if (peekCache(link.target) != null) continue // already cached / in-flight handled below
+                if (isCached(link.target)) continue // already cached
                 GameViz.prefetch(article.title, link.target)
                 try {
                     // Shares the in-flight slot (C): a press/click on this link joins this fetch.
@@ -348,17 +349,19 @@ class GameService(
         }
     }
 
+    /** Stores the raw article HTML (re-parsed to structured sections on read). */
     private suspend fun cacheArticle(
-        article: Article,
+        title: String,
+        html: String,
         isGameArticle: Boolean = false,
         isHyperlink: Boolean = false,
         parentArticle: String? = null
     ) {
         articleCacheDao.insertArticle(
             ArticleCache(
-                title = article.title,
-                content = article.content,
-                links = gson.toJson(article.links),
+                title = title,
+                content = html,
+                links = "",
                 isGameArticle = isGameArticle,
                 isHyperlink = isHyperlink,
                 parentArticle = parentArticle

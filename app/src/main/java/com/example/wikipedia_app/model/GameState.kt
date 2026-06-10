@@ -15,8 +15,10 @@ data class GameState(
 
 data class Article(
     val title: String,
-    val content: String,
-    val links: List<WikiLink>
+    val links: List<WikiLink>,
+    // Structured content (sections / headings / bullets) for clean rendering,
+    // parsed with the same ArticleParser the reader screen uses.
+    val sections: List<ParsedSection> = emptyList()
 )
 
 data class WikiLink(

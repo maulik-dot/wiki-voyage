@@ -225,7 +225,7 @@ private fun GameCallout(onClick: () -> Unit) {
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Play the Wikirace",
+                    "Play Wiki-The-Racer",
                     style = MaterialTheme.typography.titleMedium
                 )
                 Text(

@@ -11,6 +11,10 @@ interface ArticleCacheDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertArticle(article: ArticleCache)
 
+    /** Re-tag a visited article as a game article so eviction never deletes it. */
+    @Query("UPDATE article_cache SET isGameArticle = 1, isHyperlink = 0, parentArticle = NULL WHERE title = :title")
+    suspend fun markAsGameArticle(title: String)
+
     @Query("SELECT * FROM article_cache WHERE isGameArticle = 1 ORDER BY timestamp DESC LIMIT :limit")
     fun getRecentGameArticles(limit: Int = 50): Flow<List<ArticleCache>>
 
