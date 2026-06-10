@@ -4,6 +4,7 @@ import android.util.Log
 import com.example.wikipedia_app.model.Article
 import com.example.wikipedia_app.model.WikiLink
 import com.google.gson.Gson
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
@@ -11,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -25,12 +27,13 @@ import java.util.concurrent.TimeUnit
 class GameService(
     private val articleCacheDao: ArticleCacheDao
 ) {
-    private val timeout = 15L
+    private val timeout = 25L
     private val maxLinks = 100
     private val gson = Gson()
     private val prefetchJob = SupervisorJob()
     private val prefetchScope = CoroutineScope(Dispatchers.IO + prefetchJob)
 
+    /** Cancels any in-flight background prefetches. Called before every navigation. */
     fun cancelPrefetch() = prefetchJob.cancelChildren()
 
     private val httpClient = OkHttpClient.Builder()
@@ -51,8 +54,8 @@ class GameService(
             withTimeout(TimeUnit.SECONDS.toMillis(timeout)) {
                 val title = fetchRandomTitle()
                 val article = fetchArticleFromApi(title)
-                prefetchHyperlinks(article)
                 cacheArticle(article, isGameArticle = true)
+                prefetchHyperlinks(article)
                 article
             }
         } catch (e: Exception) {
@@ -79,21 +82,27 @@ class GameService(
     }
 
     suspend fun getArticle(title: String): Article = withContext(Dispatchers.IO) {
+        // Stop the *previous* article's background prefetches first — otherwise they
+        // pile up across hops and trip Wikipedia's rate limiter (HTTP 429).
+        cancelPrefetch()
+
         val cached = articleCacheDao.getArticle(title)
         if (cached != null) {
             Log.d("GameService", "Loaded '$title' from cache.")
-            return@withContext Article(
+            val article = Article(
                 title = cached.title,
                 content = cached.content,
                 links = gson.fromJson(cached.links, object : TypeToken<List<WikiLink>>() {}.type)
             )
+            prefetchHyperlinks(article) // warm the next hop's links
+            return@withContext article
         }
         try {
             withTimeout(TimeUnit.SECONDS.toMillis(timeout)) {
                 Log.d("GameService", "Fetching '$title' from API.")
                 val article = fetchArticleFromApi(title)
-                prefetchHyperlinks(article)
                 cacheArticle(article, isGameArticle = true)
+                prefetchHyperlinks(article)
                 article
             }
         } catch (e: Exception) {
@@ -130,14 +139,32 @@ class GameService(
         return parseArticleFromHtml(articleTitle, htmlText)
     }
 
-    private fun fetchJson(url: String): com.google.gson.JsonObject {
-        val request = Request.Builder().url(url).build()
-        httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw IOException("HTTP ${response.code} from $url")
+    /**
+     * Performs a GET and parses JSON, retrying on HTTP 429 (Too Many Requests)
+     * with backoff. Honours the server's Retry-After header when present.
+     */
+    private fun fetchJson(url: String): JsonObject {
+        var attempt = 0
+        while (true) {
+            val request = Request.Builder().url(url).build()
+            var backoffMs: Long
+            httpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string() ?: throw IOException("Empty response from $url")
+                    return JsonParser.parseString(body).asJsonObject
+                }
+                if (response.code == 429 && attempt < MAX_RETRIES) {
+                    val retryAfterSec = response.header("Retry-After")?.toLongOrNull()
+                    backoffMs = (retryAfterSec?.times(1000) ?: (BASE_BACKOFF_MS shl attempt))
+                        .coerceAtMost(MAX_BACKOFF_MS)
+                } else {
+                    throw IOException("HTTP ${response.code} from $url")
+                }
             }
-            val body = response.body?.string() ?: throw IOException("Empty response from $url")
-            return JsonParser.parseString(body).asJsonObject
+            // Only reached on the 429-retry path (response already closed by use{}).
+            attempt++
+            Log.d("GameService", "429 rate-limited, backing off ${backoffMs}ms (attempt $attempt)")
+            Thread.sleep(backoffMs)
         }
     }
 
@@ -156,12 +183,18 @@ class GameService(
         return Article(title, content, links)
     }
 
+    /**
+     * Warms the cache for the first few links of [article], one at a time with
+     * gentle pacing. Runs in the cancellable prefetch scope so a navigation
+     * (which calls cancelPrefetch) stops it immediately — keeping request volume
+     * low enough to stay under Wikipedia's rate limiter.
+     */
     private fun prefetchHyperlinks(article: Article) {
-        // Limit to 10 and stagger by 400ms each to avoid hitting Wikipedia's rate limiter
-        article.links.take(10).forEachIndexed { index, link ->
-            prefetchScope.launch {
-                delay(index * 400L)
-                Log.d("GameService", "Prefetching '${link.target}'...")
+        prefetchScope.launch {
+            delay(PREFETCH_START_DELAY_MS) // let the just-opened article settle first
+            for (link in article.links.take(PREFETCH_COUNT)) {
+                if (!isActive) break
+                if (articleCacheDao.getArticle(link.target) != null) continue // already cached
                 try {
                     val prefetched = fetchArticleFromApi(link.target)
                     cacheArticle(prefetched, isGameArticle = false, isHyperlink = true, parentArticle = article.title)
@@ -169,6 +202,8 @@ class GameService(
                 } catch (_: Exception) {
                     Log.d("GameService", "Failed to prefetch '${link.target}'.")
                 }
+                if (!isActive) break
+                delay(PREFETCH_PACING_MS)
             }
         }
     }
@@ -189,6 +224,15 @@ class GameService(
                 parentArticle = parentArticle
             )
         )
+    }
+
+    companion object {
+        private const val MAX_RETRIES = 2
+        private const val BASE_BACKOFF_MS = 800L
+        private const val MAX_BACKOFF_MS = 5000L
+        private const val PREFETCH_COUNT = 5
+        private const val PREFETCH_START_DELAY_MS = 1200L
+        private const val PREFETCH_PACING_MS = 900L
     }
 }
 
