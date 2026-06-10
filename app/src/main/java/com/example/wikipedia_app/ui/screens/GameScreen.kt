@@ -52,6 +52,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.wikipedia_app.data.GameException
 import com.example.wikipedia_app.data.GameService
+import com.example.wikipedia_app.data.GameViz
 import com.example.wikipedia_app.model.GameState
 import com.example.wikipedia_app.model.WikiLink
 import com.example.wikipedia_app.ui.components.LoadingState
@@ -72,6 +73,7 @@ private suspend fun startNewGame(
     try {
         val startArticle = gameService.getRandomArticle()
         val targetTitle = gameService.getRandomArticleTitle()
+        GameViz.start(startArticle.title, targetTitle)
         onReady(
             GameState(
                 startArticle = startArticle,
@@ -201,6 +203,7 @@ fun GameScreen(
                                 error = null
                                 val newArticle = gameService.getArticle(link.target)
                                 val isWon = newArticle.title == gameState.targetArticleTitle
+                                GameViz.hop(leaving.title, newArticle.title, gameState.steps + 1, isWon)
                                 gameState = gameState.copy(
                                     currentArticle = newArticle,
                                     navigationPath = gameState.navigationPath + leaving,
@@ -218,11 +221,13 @@ fun GameScreen(
                     },
                     onBackClick = {
                         if (gameState.navigationPath.isNotEmpty()) {
+                            val restored = gameState.navigationPath.last()
                             gameState = gameState.copy(
-                                currentArticle = gameState.navigationPath.last(),
+                                currentArticle = restored,
                                 navigationPath = gameState.navigationPath.dropLast(1),
                                 steps = gameState.steps - 1
                             )
+                            GameViz.back(restored.title)
                         }
                     }
                 )

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wiki-The-Racer · Live Graph</title>
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<style>
+  :root{
+    --navy:#182A42; --navy2:#21364f; --cream:#E8D2AA; --blue:#3366CC;
+    --gold:#AC6600; --green:#14866D; --ink:#EAECF0; --muted:#9aa6b2;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#0e1620;color:var(--ink)}
+  #app{display:flex;flex-direction:column;height:100%}
+  header{display:flex;align-items:center;gap:18px;padding:12px 18px;background:linear-gradient(180deg,#13202f,#0e1620);border-bottom:1px solid #233246}
+  header h1{font-size:18px;margin:0;font-family:Georgia,'Times New Roman',serif;letter-spacing:.3px}
+  header h1 .r{color:var(--cream)}
+  .pill{display:inline-flex;align-items:center;gap:8px;background:#16263a;border:1px solid #2a3d54;border-radius:999px;padding:6px 12px;font-size:13px}
+  .pill b{color:#fff}
+  .dot{width:9px;height:9px;border-radius:50%;background:#566} .dot.live{background:#39d98a;box-shadow:0 0 8px #39d98a}
+  .spacer{flex:1}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);padding:8px 18px;background:#0e1620;border-bottom:1px solid #1c2937}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:14px;height:14px;border-radius:4px;display:inline-block}
+  .swline{width:22px;height:0;border-top-width:3px;border-top-style:solid;display:inline-block}
+  #net{flex:1;min-height:0}
+  #overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;background:rgba(14,22,32,.86);text-align:center;padding:24px}
+  #overlay h2{font-family:Georgia,serif;font-weight:normal;margin:0}
+  #overlay p{color:var(--muted);max-width:420px;line-height:1.5}
+  .toast{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);background:#16263a;border:1px solid #2a3d54;padding:8px 16px;border-radius:999px;font-size:13px;opacity:0;transition:opacity .3s}
+  .toast.show{opacity:1}
+  .win{color:#ffd27a}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Wiki-<span class="r">The-Racer</span> · live graph</h1>
+    <span class="pill"><span class="dot" id="conn"></span> <span id="connText">connecting…</span></span>
+    <span class="pill">🎯 target: <b id="target">—</b></span>
+    <span class="pill">hops: <b id="steps">0</b></span>
+    <div class="spacer"></div>
+    <span class="pill" id="status">waiting for game</span>
+  </header>
+  <div class="legend">
+    <span><i class="sw" style="background:#1f9d76"></i> start</span>
+    <span><i class="sw" style="background:#d99a2b;border:2px dashed #ffd27a"></i> target</span>
+    <span><i class="sw" style="background:#3366CC"></i> visited</span>
+    <span><i class="sw" style="background:#ffcf5c"></i> reached 🏁</span>
+    <span><i class="sw" style="background:#3a4757"></i> prefetching (async)</span>
+    <span><i class="sw" style="background:#5b7fb0"></i> cached / warm</span>
+    <span><i class="swline" style="border-color:#3366CC"></i> hop you clicked</span>
+    <span><i class="swline" style="border-color:#46566a;border-top-style:dashed"></i> background prefetch</span>
+  </div>
+  <div id="net"></div>
+</div>
+<div id="overlay">
+  <h2>🏍️ Waiting for a game…</h2>
+  <p>Run the app from Android Studio, open the <b>Wikirace</b>, and start a game.
+     The start &amp; target articles appear here, then every hyperlink you tap draws a new edge.
+     Faint dashed edges are the app's <b>background prefetching</b> warming your likely next hops.</p>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const norm = t => (t || "").replace(/_/g, " ").trim();
+
+// Node "rank" so a later weak event (prefetch) never downgrades a strong one.
+const RANK = { prefetch:0, cached:1, target:2, visited:3, start:4, won:5 };
+
+const NODE_STYLE = {
+  start:    {color:{background:'#1f9d76',border:'#39d98a'}, font:{color:'#fff'}, shape:'dot', size:22},
+  target:   {color:{background:'#d99a2b',border:'#ffd27a'}, font:{color:'#fff'}, shape:'star', size:26,
+             shapeProperties:{borderDashes:[4,3]}, borderWidth:2},
+  visited:  {color:{background:'#3366CC',border:'#7aa0e6'}, font:{color:'#fff'}, shape:'dot', size:18},
+  cached:   {color:{background:'#5b7fb0',border:'#86a7d6'}, font:{color:'#dfe7f3'}, shape:'dot', size:12},
+  prefetch: {color:{background:'#3a4757',border:'#566'}, font:{color:'#9aa6b2'}, shape:'dot', size:9},
+  won:      {color:{background:'#ffcf5c',border:'#fff0c2'}, font:{color:'#2a2300'}, shape:'star', size:30, borderWidth:3},
+};
+function edgeStyle(kind){
+  if(kind==='won')      return {color:{color:'#ffcf5c',highlight:'#ffe9a8'}, width:5, dashes:false};
+  if(kind==='hop')      return {color:{color:'#3366CC',highlight:'#9ec0ff'}, width:3, dashes:false};
+  if(kind==='cached')   return {color:{color:'#5b7fb0'}, width:1.5, dashes:[4,4]};
+  return {color:{color:'#46566a'}, width:1, dashes:[2,4]};            // prefetch
+}
+
+const nodes = new vis.DataSet();
+const edges = new vis.DataSet();
+const nodeRank = {};          // id -> current rank
+let targetId = null;
+
+function setNode(id, group, extra={}){
+  id = norm(id);
+  const r = RANK[group] ?? 0;
+  if (nodeRank[id] !== undefined && nodeRank[id] >= r) return;   // don't downgrade
+  nodeRank[id] = r;
+  const label = (group==='target') ? id + "  🎯" : id;
+  nodes.update(Object.assign({id, label, group}, NODE_STYLE[group], extra));
+}
+function setEdge(from, to, kind){
+  from = norm(from); to = norm(to);
+  const id = from + "→" + to;
+  const cur = edges.get(id);
+  const order = {prefetch:0, cached:1, hop:2, won:3};
+  if (cur && (order[cur.kind] ?? 0) >= order[kind]) return;       // keep stronger edge
+  edges.update(Object.assign({id, from, to, kind, arrows: kind==='prefetch'||kind==='cached' ? '' : 'to',
+                              smooth:{type:'dynamic'}}, edgeStyle(kind)));
+}
+
+const container = document.getElementById('net');
+const network = new vis.Network(container, {nodes, edges}, {
+  physics:{ solver:'forceAtlas2Based', stabilization:{iterations:120},
+            forceAtlas2Based:{gravitationalConstant:-55, springLength:120, springConstant:0.05}},
+  nodes:{ font:{size:14, face:'Roboto, sans-serif'}, borderWidth:2 },
+  edges:{ smooth:true },
+  interaction:{ hover:true, tooltipDelay:120 },
+});
+
+function toast(msg, win){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast show' + (win?' win':'');
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.className='toast', 2200);
+}
+const $ = id => document.getElementById(id);
+
+function reset(){
+  nodes.clear(); edges.clear();
+  for(const k in nodeRank) delete nodeRank[k];
+}
+
+function handle(ev){
+  switch(ev.type){
+    case 'start': {
+      reset();
+      $('overlay').style.display = 'none';
+      $('steps').textContent = '0';
+      $('status').textContent = 'racing…';
+      targetId = norm(ev.target);
+      setNode(ev.article, 'start');
+      setNode(ev.target, 'target');
+      $('target').textContent = norm(ev.target);
+      network.fit({animation:true});
+      toast('New race: ' + norm(ev.article) + '  →  ' + norm(ev.target));
+      break;
+    }
+    case 'hop': {
+      setNode(ev.from, 'visited');               // (start stays start — rank protects it)
+      const won = ev.won === true;
+      setNode(ev.to, won ? 'won' : 'visited');
+      setEdge(ev.from, ev.to, won ? 'won' : 'hop');
+      $('steps').textContent = ev.steps;
+      network.selectNodes([norm(ev.to)]);
+      if (won){ $('status').textContent = '🏁 reached in ' + ev.steps + ' hops!'; toast('🏁 You reached '+norm(ev.to)+'!', true); }
+      break;
+    }
+    case 'back': {
+      network.selectNodes([norm(ev.to)]);
+      toast('↩ back to ' + norm(ev.to));
+      break;
+    }
+    case 'prefetch':      setNode(ev.to,'prefetch'); setEdge(ev.from, ev.to, 'prefetch'); break;
+    case 'prefetch_done': setNode(ev.to,'cached');   setEdge(ev.from, ev.to, 'cached');   break;
+  }
+}
+
+// ---- SSE connection ----
+function connect(){
+  const es = new EventSource('/events');
+  es.onopen  = () => { $('conn').className='dot live'; $('connText').textContent='live'; };
+  es.onerror = () => { $('conn').className='dot'; $('connText').textContent='reconnecting…'; };
+  es.onmessage = e => { try{ handle(JSON.parse(e.data)); }catch(err){ console.warn(err); } };
+}
+connect();
+</script>
+</body>
+</html>

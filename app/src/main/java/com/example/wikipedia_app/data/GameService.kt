@@ -86,7 +86,11 @@ class GameService(
         // pile up across hops and trip Wikipedia's rate limiter (HTTP 429).
         cancelPrefetch()
 
+        // Prefetch stores articles under their display title (spaces), but links
+        // arrive as slugs (underscores) — look up both so prefetched multi-word
+        // articles still hit the cache and open instantly.
         val cached = articleCacheDao.getArticle(title)
+            ?: articleCacheDao.getArticle(title.replace('_', ' '))
         if (cached != null) {
             Log.d("GameService", "Loaded '$title' from cache.")
             val article = Article(
@@ -170,8 +174,20 @@ class GameService(
 
     private fun parseArticleFromHtml(title: String, html: String): Article {
         val doc = Jsoup.parse(html, "https://en.wikipedia.org/")
-        val content = doc.text()
-        val links = doc.select("a[href^='/wiki/']")
+
+        // Strip the infobox/tables/refs first. Otherwise the flattened text begins
+        // with infobox soup ("Screenplay by … Produced by …") where dozens of links
+        // are crammed together with no spacing and are nearly impossible to tap —
+        // which made the first several links feel like they "don't open".
+        doc.select(
+            "table, .infobox, .navbox, .navbox-inner, .vertical-navbox, .hatnote, sup, " +
+            ".mw-editsection, .reflist, .mw-references-wrap, .sistersitebox, .gallery, " +
+            ".metadata, .noprint, .mbox-small, .thumb, figure, style, script"
+        ).remove()
+
+        val output = doc.selectFirst("div.mw-parser-output") ?: doc.body()
+        val content = output.text()
+        val links = output.select("a[href^='/wiki/']")
             .filter { !it.attr("href").contains(":") }
             .filter { !it.attr("href").contains("#") }
             .filter { it.text().isNotBlank() }
@@ -195,9 +211,11 @@ class GameService(
             for (link in article.links.take(PREFETCH_COUNT)) {
                 if (!isActive) break
                 if (articleCacheDao.getArticle(link.target) != null) continue // already cached
+                GameViz.prefetch(article.title, link.target)
                 try {
                     val prefetched = fetchArticleFromApi(link.target)
                     cacheArticle(prefetched, isGameArticle = false, isHyperlink = true, parentArticle = article.title)
+                    GameViz.prefetchDone(article.title, link.target)
                     Log.d("GameService", "Prefetched '${link.target}'.")
                 } catch (_: Exception) {
                     Log.d("GameService", "Failed to prefetch '${link.target}'.")
