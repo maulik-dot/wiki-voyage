@@ -1,5 +1,6 @@
 package com.example.wikipedia_app.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,6 +42,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -144,11 +149,19 @@ fun GameScreen(
         Box(Modifier.padding(padding)) {
             when {
                 isLoading -> Column(
-                    Modifier.fillMaxSize(),
+                    Modifier.fillMaxSize().padding(32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    LoadingState(Modifier.height(80.dp))
+                    Image(
+                        painter = painterResource(com.example.wikipedia_app.R.drawable.logo_full),
+                        contentDescription = "Wiki-The-Racer",
+                        modifier = Modifier
+                            .fillMaxWidth(0.85f)
+                            .clip(RoundedCornerShape(16.dp))
+                    )
+                    Spacer(Modifier.height(32.dp))
+                    LoadingState(Modifier.height(64.dp))
                     Text(
                         "Finding two random articles…",
                         style = MaterialTheme.typography.bodyMedium,
@@ -315,14 +328,26 @@ private fun GameWonScreen(
     onPlayAgain: () -> Unit,
     onExit: () -> Unit
 ) {
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
     ) {
+        Image(
+            painter = painterResource(com.example.wikipedia_app.R.drawable.ic_watermark),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
+            alpha = 0.06f,
+            modifier = Modifier.fillMaxSize()
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
         Icon(
             Icons.Default.EmojiEvents,
             contentDescription = null,
@@ -352,6 +377,7 @@ private fun GameWonScreen(
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth()) {
             Text("Back to Explore")
+        }
         }
     }
 }
