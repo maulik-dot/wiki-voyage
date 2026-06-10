@@ -16,6 +16,8 @@ import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
@@ -27,13 +29,25 @@ import java.net.URLEncoder
 import java.net.UnknownHostException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 class GameService(
     private val articleCacheDao: ArticleCacheDao
 ) {
-    private val timeout = 25L
+    private val timeout = 30L
     private val maxLinks = 100
     private val gson = Gson()
+
+    // Global request throttle: every network request waits its turn so the total
+    // rate stays well under Wikipedia's limiter, no matter how many sources
+    // (foreground tap, prefetch, press-warm) want to fetch at once.
+    private val netMutex = Mutex()
+    private var lastRequestAt = 0L
+
+    // (D) press-warm generation: only the most recent press actually fetches, so
+    // scrolling — which fires a press on every link the finger crosses — collapses
+    // to a single request instead of a burst.
+    private val warmGen = AtomicInteger(0)
     // The paced prefetch *loop* — cancelled on every navigation.
     private val prefetchJob = SupervisorJob()
     private val prefetchScope = CoroutineScope(Dispatchers.IO + prefetchJob)
@@ -130,7 +144,12 @@ class GameService(
      * makes *any* link feel instant at the cost of one request per real press.
      */
     fun warm(parentTitle: String, target: String) {
+        val gen = warmGen.incrementAndGet()
         fetchScope.launch {
+            // Debounce: ignore presses that are really the start of a scroll. Only
+            // the latest press still standing after the debounce window fetches.
+            delay(WARM_DEBOUNCE_MS)
+            if (gen != warmGen.get()) return@launch
             try {
                 if (peekCache(target) == null) {
                     getOrFetch(target, isGameArticle = false, parentArticle = parentTitle)
@@ -202,7 +221,17 @@ class GameService(
     private fun normalizeTitle(t: String) = t.replace('_', ' ').trim()
     private fun keyOf(t: String) = normalizeTitle(t).lowercase()
 
-    private fun fetchRandomTitle(): String {
+    /** Serialises request *starts* with a minimum gap to avoid bursting into 429s. */
+    private suspend fun rateGate() {
+        netMutex.withLock {
+            val since = System.currentTimeMillis() - lastRequestAt
+            if (since < MIN_REQUEST_INTERVAL_MS) delay(MIN_REQUEST_INTERVAL_MS - since)
+            lastRequestAt = System.currentTimeMillis()
+        }
+    }
+
+    private suspend fun fetchRandomTitle(): String {
+        rateGate()
         val json = fetchJson(
             "https://en.wikipedia.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=1&format=json"
         )
@@ -212,7 +241,8 @@ class GameService(
             .get("title").asString
     }
 
-    private fun fetchArticleFromApi(title: String): Article {
+    private suspend fun fetchArticleFromApi(title: String): Article {
+        rateGate()
         val encodedTitle = URLEncoder.encode(title, "UTF-8")
         val json = fetchJson(
             "https://en.wikipedia.org/w/api.php?action=parse&page=$encodedTitle" +
@@ -337,12 +367,14 @@ class GameService(
     }
 
     companion object {
-        private const val MAX_RETRIES = 2
-        private const val BASE_BACKOFF_MS = 800L
-        private const val MAX_BACKOFF_MS = 5000L
-        private const val PREFETCH_COUNT = 5
+        private const val MAX_RETRIES = 3
+        private const val BASE_BACKOFF_MS = 1000L
+        private const val MAX_BACKOFF_MS = 6000L
+        private const val MIN_REQUEST_INTERVAL_MS = 350L  // global throttle (~3 req/s)
+        private const val WARM_DEBOUNCE_MS = 180L         // scroll-vs-press debounce
+        private const val PREFETCH_COUNT = 4
         private const val PREFETCH_START_DELAY_MS = 1200L
-        private const val PREFETCH_PACING_MS = 900L
+        private const val PREFETCH_PACING_MS = 1000L
     }
 }
 
