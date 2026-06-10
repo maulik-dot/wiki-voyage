@@ -1,12 +1,13 @@
 package com.example.wikipedia_app.ui.components
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -17,6 +18,7 @@ import com.example.wikipedia_app.model.WikiLink
 fun WikiArticle(
     article: Article,
     onLinkClick: (WikiLink) -> Unit,
+    onLinkPress: (WikiLink) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -63,18 +65,30 @@ fun WikiArticle(
                 }
             }
 
-            ClickableText(
+            // Map a touch position to the link under it (if any).
+            var layoutResult by remember(annotatedString) { mutableStateOf<TextLayoutResult?>(null) }
+            fun linkAt(pos: Offset): WikiLink? {
+                val layout = layoutResult ?: return null
+                val offset = layout.getOffsetForPosition(pos)
+                val target = annotatedString
+                    .getStringAnnotations(tag = "link", start = offset, end = offset)
+                    .firstOrNull()?.item ?: return null
+                return article.links.find { it.target == target }
+            }
+
+            Text(
                 text = annotatedString,
                 style = MaterialTheme.typography.bodyLarge.copy(color = textColor),
-                onClick = { offset ->
-                    annotatedString.getStringAnnotations(tag = "link", start = offset, end = offset)
-                        .firstOrNull()
-                        ?.let { annotation ->
-                            article.links.find { it.target == annotation.item }
-                                ?.let { onLinkClick(it) }
-                        }
+                onTextLayout = { layoutResult = it },
+                modifier = Modifier.pointerInput(annotatedString) {
+                    detectTapGestures(
+                        // (D) finger-down: start warming the link before the tap completes
+                        onPress = { pos -> linkAt(pos)?.let(onLinkPress) },
+                        // release-as-tap: navigate (joins the warm fetch via in-flight dedup)
+                        onTap = { pos -> linkAt(pos)?.let(onLinkClick) }
+                    )
                 }
             )
         }
     }
-} 
+}

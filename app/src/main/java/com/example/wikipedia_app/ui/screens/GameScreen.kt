@@ -195,6 +195,10 @@ fun GameScreen(
                 else -> GameInProgress(
                     gameState = gameState,
                     elapsedTime = elapsedTime,
+                    onLinkPress = { link ->
+                        // (D) warm the link on finger-down so the tap opens instantly
+                        gameState.currentArticle?.let { gameService.warm(it.title, link.target) }
+                    },
                     onLinkClick = { link ->
                         scope.launch {
                             val leaving = gameState.currentArticle ?: return@launch
@@ -210,6 +214,8 @@ fun GameScreen(
                                     steps = gameState.steps + 1,
                                     isGameWon = isWon
                                 )
+                                // (E) drop the article we just left's prefetched links
+                                gameService.pruneLinksOf(leaving.title)
                             } catch (e: GameException) {
                                 error = e.message
                             } catch (e: Exception) {
@@ -241,6 +247,7 @@ private fun GameInProgress(
     gameState: GameState,
     elapsedTime: Long,
     onLinkClick: (WikiLink) -> Unit,
+    onLinkPress: (WikiLink) -> Unit,
     onBackClick: () -> Unit
 ) {
     Column(Modifier.fillMaxSize()) {
@@ -295,6 +302,7 @@ private fun GameInProgress(
             WikiArticle(
                 article = article,
                 onLinkClick = onLinkClick,
+                onLinkPress = onLinkPress,
                 modifier = Modifier
                     .weight(1f)
                     .background(MaterialTheme.colorScheme.background)
